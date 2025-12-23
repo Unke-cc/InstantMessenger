@@ -51,3 +51,79 @@ The application accepts commands via standard input:
 - `com.example.lanchat.protocol`: JSON message models.
 - `com.example.lanchat.service`: Business logic (`PeerDirectory`).
 - `com.example.lanchat.store`: Database access (`Db`, `IdentityDao`, `PeerDao`).
+
+## Transport Demo (Step 2)
+
+This demo starts a TCP server on `p2pPort`, performs `HELLO` handshake, and supports sending JSON-Lines framed test chat messages.
+
+1. **Build:**
+   ```bash
+   mvn package
+   ```
+
+2. **Run two processes:**
+   **Terminal 1 (Node1):**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.DemoMain 19000 Node1
+   ```
+
+   **Terminal 2 (Node2):**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.DemoMain 19002 Node2
+   ```
+
+3. **Send messages:**
+   In Node1 terminal:
+   ```text
+   /send 127.0.0.1 19002 hello
+   /senddup 127.0.0.1 19002 dup_test
+   ```
+
+   Node2 should print:
+   - `Node1: hello`
+   - `Node1: dup_test` (only once, dedup by `msgId`)
+
+## Private Chat Demo (Step 3)
+
+This demo implements:
+- Private chat `CHAT` + `ACK(DELIVERED)` flow
+- SQLite persistence for conversations and messages
+- `seen_messages` dedup (duplicate `msgId` won't be stored/printed twice)
+
+1. **Build:**
+   ```bash
+   mvn package
+   ```
+
+2. **Run two nodes (use different DB files):**
+   **Terminal A:**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.demo.ChatCliMain 19001 Alice dataA.db
+   ```
+
+   **Terminal B:**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.demo.ChatCliMain 19002 Bob dataB.db
+   ```
+
+3. **Send a private message (by ip:port):**
+   In Terminal A:
+   ```text
+   /send 127.0.0.1:19002 hi
+   ```
+   Terminal A should print `ACK DELIVERED for msgId=...` after Bob replies ACK.
+
+4. **Verify persistence (restart and view history):**
+   In Terminal A:
+   ```text
+   /convs
+   /history <convId> 20
+   ```
+   Exit and restart Terminal A, run `/history <convId> 20` again to confirm messages are still in SQLite.
+
+5. **Verify dedup:**
+   In Terminal A:
+   ```text
+   /senddup 127.0.0.1:19002 dup_test
+   ```
+   Terminal B should print `Alice: dup_test` only once.

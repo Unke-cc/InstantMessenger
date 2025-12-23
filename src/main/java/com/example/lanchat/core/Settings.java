@@ -20,4 +20,10 @@ public class Settings {
     // Probe settings
     public static final int PROBE_TIMEOUT_MS = 2000;
     public static final int PROBE_THREADS = 4;
+
+    public static final int MAX_MESSAGE_BYTES = 64 * 1024;
+    public static final long SEEN_MSG_TTL_MS = 10 * 60 * 1000L;
+    public static final int SEEN_MSG_MAX_SIZE = 50_000;
+    public static final int HELLO_TIMEOUT_MS = 5000;
+    public static final int TCP_IO_THREADS = 16;
 }

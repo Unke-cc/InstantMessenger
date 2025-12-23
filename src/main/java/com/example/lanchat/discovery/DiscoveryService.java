@@ -2,9 +2,11 @@ package com.example.lanchat.discovery;
 
 import com.example.lanchat.core.Settings;
 import com.example.lanchat.protocol.MessageEnvelope;
+import com.example.lanchat.protocol.MessageType;
 import com.example.lanchat.service.PeerDirectory;
 import com.example.lanchat.store.IdentityDao.Identity;
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -107,10 +109,16 @@ public class DiscoveryService {
     private void sendPresence() {
         try {
             MessageEnvelope msg = new MessageEnvelope();
+            msg.protocolVersion = 1;
+            msg.type = MessageType.PRESENCE;
             msg.msgId = UUID.randomUUID().toString();
             msg.from = new MessageEnvelope.NodeInfo(identity.nodeId, identity.displayName);
             msg.ts = System.currentTimeMillis();
-            msg.payload = new MessageEnvelope.Payload(identity.p2pPort, identity.webPort);
+
+            JsonObject payload = new JsonObject();
+            payload.addProperty("p2pPort", identity.p2pPort);
+            payload.addProperty("webPort", identity.webPort);
+            msg.payload = payload;
             
             String json = gson.toJson(msg);
             byte[] data = json.getBytes(StandardCharsets.UTF_8);
@@ -149,14 +157,24 @@ public class DiscoveryService {
     private void handleMessage(String json, String senderIp) {
         try {
             MessageEnvelope msg = gson.fromJson(json, MessageEnvelope.class);
-            if (msg == null || !"PRESENCE".equals(msg.type)) return;
+            if (msg == null || !MessageType.PRESENCE.equals(msg.type)) return;
             
             if (identity.nodeId.equals(msg.from.nodeId)) return;
             
             if (msgIdCache.containsKey(msg.msgId)) return;
             msgIdCache.put(msg.msgId, System.currentTimeMillis());
-            
-            peerDirectory.addPeer(msg.from.nodeId, msg.from.name, senderIp, msg.payload.p2pPort);
+
+            int p2pPort = 0;
+            if (msg.payload != null && msg.payload.isJsonObject()) {
+                JsonObject payload = msg.payload.getAsJsonObject();
+                if (payload.has("p2pPort")) {
+                    p2pPort = payload.get("p2pPort").getAsInt();
+                }
+            }
+
+            if (p2pPort > 0) {
+                peerDirectory.addPeer(msg.from.nodeId, msg.from.name, senderIp, p2pPort);
+            }
             
         } catch (Exception e) {
             System.err.println("Invalid message received: " + e.getMessage());

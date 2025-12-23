@@ -69,6 +69,20 @@ public class PeerDao {
         }
         return list;
     }
+
+    public Peer getPeerByNodeId(String nodeId) throws SQLException {
+        Connection conn = Db.getConnection();
+        String sql = "SELECT * FROM peers WHERE peer_node_id = ? LIMIT 1";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, nodeId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
+    }
     
     private Peer mapRow(ResultSet rs) throws SQLException {
         Peer p = new Peer();
