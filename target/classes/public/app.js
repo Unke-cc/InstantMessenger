@@ -9,14 +9,149 @@ const state = {
   oldestTs: null,
   pollSince: 0,
   pollTimer: null,
+  roomLimit: 10,
+  showAllRooms: false,
+  selectedMembers: new Set(),
+  modalMode: "CREATE", // CREATE or INVITE
+  modalRoomId: null
 };
 
 function $(id) {
   return document.getElementById(id);
 }
 
-function setStatus(text) {
-  $("statusLine").textContent = text || "";
+function openModal(id, mode = "CREATE") {
+  const modal = $(id);
+  if (modal) {
+    modal.classList.remove("hidden");
+    if (id === "createRoomModal") {
+      state.modalMode = mode;
+      resetCreateRoomForm();
+      renderMemberSelector();
+    } else if (id === "roomMembersModal") {
+      loadRoomMembers();
+    }
+  }
+}
+
+async function loadRoomMembers() {
+  if (!state.current || state.current.type !== "ROOM") return;
+  const box = $("roomMembersList");
+  if (!box) return;
+  
+  box.innerHTML = '<div class="item skeleton" style="height: 40px;"></div>';
+  
+  try {
+    const members = await apiGet(`/api/rooms/members?roomId=${state.current.roomId}`);
+    box.innerHTML = members.map(m => `
+      <div class="item">
+        <div class="user-avatar-small" style="background: #f1f5f9;"></div>
+        <div class="item-content">
+          <div class="item-title">${escapeHtml(m.name || m.nodeId)}</div>
+          <div class="item-meta">${m.role === 'OWNER' ? '创建者' : '成员'}</div>
+        </div>
+        ${m.online ? '<div class="status-dot status-online"></div>' : ''}
+      </div>
+    `).join('');
+  } catch (e) {
+    box.innerHTML = `<div style="padding: 20px; color: #ef4444; text-align: center;">加载失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function closeModal(id) {
+  const modal = $(id);
+  if (modal) modal.classList.add("hidden");
+}
+
+function resetCreateRoomForm() {
+  const isInvite = state.modalMode === "INVITE";
+  const title = $("createRoomModal").querySelector("h3");
+  if (title) title.textContent = isInvite ? "邀请新成员" : "创建群组";
+  
+  const nameGroup = $("createRoomName").closest(".form-group");
+  const typeGroup = document.querySelector('input[name="roomType"]').closest(".form-group");
+  const descGroup = $("createRoomDesc").closest(".form-group");
+  const confirmBtn = $("confirmCreateBtn");
+
+  if (isInvite) {
+    nameGroup.classList.add("hidden");
+    typeGroup.classList.add("hidden");
+    descGroup.classList.add("hidden");
+    confirmBtn.textContent = "发送邀请";
+  } else {
+    nameGroup.classList.remove("hidden");
+    typeGroup.classList.remove("hidden");
+    descGroup.classList.remove("hidden");
+    confirmBtn.textContent = "立即创建";
+  }
+
+  $("createRoomName").value = "";
+  $("createRoomDesc").value = "";
+  $("memberSearch").value = "";
+  state.selectedMembers.clear();
+  const roomTypeRadios = document.getElementsByName("roomType");
+  if (roomTypeRadios.length > 0) roomTypeRadios[0].checked = true;
+  updateCreateBtnState();
+}
+
+function updateCreateBtnState() {
+  const name = $("createRoomName").value.trim();
+  const btn = $("confirmCreateBtn");
+  if (btn) {
+    if (state.modalMode === "INVITE") {
+      btn.disabled = state.selectedMembers.size === 0;
+    } else {
+      btn.disabled = !name;
+    }
+  }
+}
+
+function renderMemberSelector(filter = "") {
+  const box = $("memberChecklist");
+  if (!box) return;
+  
+  const filteredPeers = state.peers.filter(p => 
+    (p.name || p.nodeId).toLowerCase().includes(filter.toLowerCase())
+  );
+
+  box.innerHTML = filteredPeers.map(p => `
+    <label class="member-check-item">
+      <input type="checkbox" value="${p.nodeId}" ${state.selectedMembers.has(p.nodeId) ? 'checked' : ''} onchange="toggleMemberSelection('${p.nodeId}')">
+      <div class="user-avatar-small ${p.online ? 'online' : ''}" style="width: 24px; height: 24px;"></div>
+      <div class="member-check-info">
+        <span class="member-check-name">${escapeHtml(p.name || p.nodeId)}</span>
+        <span class="member-check-id">${p.nodeId.substring(0, 8)}</span>
+      </div>
+    </label>
+  `).join('');
+}
+
+function toggleMemberSelection(nodeId) {
+  if (state.selectedMembers.has(nodeId)) {
+    state.selectedMembers.delete(nodeId);
+  } else {
+    state.selectedMembers.add(nodeId);
+  }
+  updateCreateBtnState();
+}
+
+function setStatus(text, type = "info") {
+  const statusLine = $("statusLine");
+  if (!statusLine) return;
+  statusLine.textContent = text || (state.me ? "在线" : "连接中...");
+  statusLine.style.color = type === "error" ? "#ef4444" : "var(--accent-online)";
+}
+
+function showLoading(btn, loading = true) {
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true;
+    btn.dataset.originalText = btn.innerHTML;
+    btn.innerHTML = `<span class="loading-spinner"></span>`;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.originalText || btn.innerHTML;
+  }
 }
 
 async function apiGet(path) {
@@ -42,8 +177,7 @@ function fmtTime(ts) {
   const d = new Date(ts);
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  const ss = String(d.getSeconds()).padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
+  return `${hh}:${mm}`;
 }
 
 function clearMessages() {
@@ -80,66 +214,132 @@ function upsertMessages(list) {
 
 function renderPeers() {
   const box = $("peersList");
-  box.innerHTML = "";
-  for (const p of state.peers) {
-    const div = document.createElement("div");
-    div.className = "item";
-    const badgeClass = p.online ? "badge badgeOnline" : "badge badgeOffline";
-    div.innerHTML = `<div>${escapeHtml(p.name || p.nodeId)}<span class="${badgeClass}">${p.online ? "online" : "offline"}</span></div>` +
-      `<div class="sub">${escapeHtml(p.nodeId)} ${escapeHtml(p.ip || "")}:${p.p2pPort || ""}</div>`;
-    div.addEventListener("click", () => openPrivate(p.nodeId, p.name || p.nodeId));
-    box.appendChild(div);
+  if (!box) return;
+  const peers = state.peers;
+  if ($("peerCount")) $("peerCount").textContent = peers.length;
+  
+  // Basic diffing: check if content changed
+  const newContent = peers.map(p => `
+    <div class="item" onclick="openPrivate('${p.nodeId}', '${p.name || p.nodeId}')">
+      <div class="user-avatar-small ${p.online ? 'online' : ''}"></div>
+      <div class="item-content">
+        <div class="item-title">${escapeHtml(p.name || p.nodeId)}</div>
+        <div class="item-meta">${escapeHtml(p.nodeId.substring(0, 8))}</div>
+      </div>
+      <div class="status-dot ${p.online ? 'status-online' : 'status-offline'}"></div>
+    </div>
+  `).join('');
+
+  if (box.dataset.lastContent !== newContent) {
+    box.innerHTML = newContent;
+    box.dataset.lastContent = newContent;
+    // Update member selector if it's currently visible
+    if (!$("createRoomModal").classList.contains("hidden")) {
+      renderMemberSelector($("memberSearch").value);
+    }
   }
 }
 
 function renderRooms() {
   const box = $("roomsList");
-  box.innerHTML = "";
-  for (const r of state.rooms) {
-    const div = document.createElement("div");
-    div.className = "item";
-    div.innerHTML = `<div>${escapeHtml(r.roomName || r.roomId)}</div>` +
-      `<div class="sub">${escapeHtml(r.roomId)} / ${escapeHtml(r.policy || "")}</div>`;
-    div.addEventListener("click", () => openRoom(r.roomId, r.roomName || r.roomId));
-    box.appendChild(div);
+  if (!box) return;
+  let rooms = state.rooms;
+  const total = rooms.length;
+  
+  if (!state.showAllRooms && total > state.roomLimit) {
+    rooms = rooms.slice(0, state.roomLimit);
+    $("viewMoreRoomsBtn").classList.remove("hidden");
+  } else {
+    $("viewMoreRoomsBtn").classList.add("hidden");
+  }
+
+  const newContent = rooms.map(r => `
+    <div class="item ${state.current && state.current.roomId === r.roomId ? 'active' : ''}" 
+         onclick="openRoom('${r.roomId}', '${r.roomName || r.roomId}')">
+      <div class="user-avatar-small" style="background: #e0f2fe; color: #0369a1; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px;">
+        ${(r.roomName || 'G').substring(0, 1).toUpperCase()}
+      </div>
+      <div class="item-content">
+        <div class="item-title">${escapeHtml(r.roomName || r.roomId)}</div>
+        <div class="item-meta">${total > 0 ? '群组' : ''}</div>
+      </div>
+    </div>
+  `).join('');
+
+  if (box.dataset.lastContent !== newContent) {
+    box.innerHTML = newContent;
+    box.dataset.lastContent = newContent;
   }
 }
 
 function renderConvs() {
   const box = $("convsList");
-  box.innerHTML = "";
-  for (const c of state.convs) {
-    const div = document.createElement("div");
-    div.className = "item";
+  if (!box) return;
+  const newContent = state.convs.map(c => {
+    const isActive = state.current && state.current.convId === c.convId;
     const title = c.title || (c.convType === "ROOM" ? c.roomId : c.peerNodeId) || c.convId;
-    const sub = c.convType === "ROOM" ? `ROOM ${c.roomId}` : `PRIVATE ${c.peerNodeId}`;
-    div.innerHTML = `<div>${escapeHtml(title)}</div>` +
-      `<div class="sub">${escapeHtml(sub)} / ${fmtTime(c.lastMsgTs)}</div>`;
-    div.addEventListener("click", () => openConversation(c));
-    box.appendChild(div);
+    return `
+      <div class="item ${isActive ? 'active' : ''}" onclick="handleConvClick('${c.convId}')">
+        <div class="user-avatar-small" style="background: #f1f5f9;"></div>
+        <div class="item-content">
+          <div class="item-title">${escapeHtml(title)}</div>
+          <div class="item-meta">${fmtTime(c.lastMsgTs)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (box.dataset.lastContent !== newContent) {
+    box.innerHTML = newContent;
+    box.dataset.lastContent = newContent;
   }
+}
+
+function handleConvClick(convId) {
+  const c = state.convs.find(cv => cv.convId === convId);
+  if (c) openConversation(c);
 }
 
 function renderMessages(scrollToBottom) {
   const list = $("messagesList");
-  list.innerHTML = "";
+  if (!list) return;
+  const fragment = document.createDocumentFragment();
+  
   for (const id of state.orderedIds) {
     const m = state.messagesById.get(id);
     if (!m) continue;
+    
     const div = document.createElement("div");
-    const dir = m.direction === "OUT" ? "msg msgOut" : "msg msgIn";
-    div.className = dir;
-    const status = m.direction === "OUT" ? (m.status || "") : "";
-    const from = m.direction === "OUT" ? "我" : (m.fromName || m.fromNodeId || "");
-    div.innerHTML = `<div class="msgMeta"><span>${escapeHtml(from)}</span><span>${fmtTime(m.ts)}</span><span class="msgStatus">${escapeHtml(status)}</span></div>` +
-      `<div>${escapeHtml(m.content || "")}</div>`;
-    list.appendChild(div);
+    const isOut = m.direction === "OUT";
+    div.className = isOut ? "msg msgOut" : "msg msgIn";
+    
+    const status = isOut ? (m.status || "SENT") : "";
+    const displayStatus = status === "DELIVERED" ? "已送达" : (status === "SENT" ? "已发送" : status);
+    const from = isOut ? "我" : (m.fromName || m.fromNodeId || "未知");
+    
+    div.innerHTML = `
+      <div class="msg-header">
+        <span class="msg-sender">${escapeHtml(from)}</span>
+        <span class="msg-time">${fmtTime(m.ts)}</span>
+      </div>
+      <div class="msg-bubble">${escapeHtml(m.content || "")}</div>
+      ${isOut ? `<div class="msg-footer"><span class="msg-status">${displayStatus}</span></div>` : ""}
+    `;
+    fragment.appendChild(div);
   }
+  
+  list.innerHTML = "";
+  list.appendChild(fragment);
+  
   $("loadMoreBtn").classList.toggle("hidden", !state.current);
   $("membersBtn").classList.toggle("hidden", !(state.current && state.current.type === "ROOM"));
+  
   if (scrollToBottom) {
     const pane = $("messagesPane");
-    pane.scrollTop = pane.scrollHeight;
+    pane.scrollTo({
+      top: pane.scrollHeight,
+      behavior: "smooth"
+    });
   }
 }
 
@@ -157,7 +357,7 @@ async function refreshAll() {
     renderRooms();
     renderConvs();
   } catch (e) {
-    setStatus(e.message);
+    console.error(e);
   }
 }
 
@@ -166,7 +366,15 @@ function setCurrent(cur) {
   clearMessages();
   state.pollSince = 0;
   $("chatTitle").textContent = cur ? cur.title : "未选择会话";
+  if ($("chatSubtitle")) {
+    $("chatSubtitle").textContent = cur ? (cur.type === "ROOM" ? "群聊模式" : "私聊模式") : "点选左侧联系人开始聊天";
+  }
   renderMessages(false);
+  
+  // Close sidebar on mobile after selection
+  if (window.innerWidth <= 768) {
+    toggleSidebar(false);
+  }
 }
 
 async function loadLatest() {
@@ -221,171 +429,223 @@ async function pollOnce() {
     state.pollSince = Math.max(state.pollSince, data.maxTs || 0);
     if (data.messages.length > 0) renderMessages(true);
   } catch (e) {
-    setStatus(e.message);
+    console.error(e);
   }
 }
 
-async function openPrivate(peerNodeId, title) {
-  setCurrent({ type: "PRIVATE", peerNodeId, title: title || peerNodeId });
+window.openPrivate = async function(peerNodeId, title) {
+  setCurrent({ type: "PRIVATE", peerNodeId, convId: "p:" + peerNodeId, title: title || peerNodeId });
   await loadLatest();
-}
+};
 
-async function openRoom(roomId, title) {
-  setCurrent({ type: "ROOM", roomId, title: title || roomId });
+window.openRoom = async function(roomId, title) {
+  setCurrent({ type: "ROOM", roomId, convId: "r:" + roomId, title: title || roomId });
   await loadLatest();
   try {
-    setStatus("正在同步历史消息…");
+    setStatus("同步中...");
     await apiPost("/api/rooms/sync", { roomId });
     setTimeout(pollOnce, 800);
     setTimeout(() => setStatus(""), 1500);
   } catch (e) {
-    setStatus(e.message);
+    setStatus(e.message, "error");
   }
-}
+};
 
 async function openConversation(c) {
   if (c.convType === "ROOM") {
-    await openRoom(c.roomId, c.title || c.roomId);
+    await window.openRoom(c.roomId, c.title || c.roomId);
   } else {
-    await openPrivate(c.peerNodeId, c.title || c.peerNodeId);
+    await window.openPrivate(c.peerNodeId, c.title || c.peerNodeId);
   }
 }
 
 async function sendCurrent() {
   if (!state.current) return;
-  const text = $("composerInput").value;
-  const content = text != null ? text.trim() : "";
+  const input = $("composerInput");
+  const btn = $("sendBtn");
+  const content = input.value.trim();
   if (!content) return;
-  $("composerInput").value = "";
+  
+  input.value = "";
+  showLoading(btn, true);
+  
   try {
     if (state.current.type === "PRIVATE") {
       await apiPost("/api/send/private", { peerNodeId: state.current.peerNodeId, content });
     } else {
       await apiPost("/api/send/room", { roomId: state.current.roomId, content });
     }
-    await refreshAll();
     await pollOnce();
   } catch (e) {
-    setStatus(e.message);
+    setStatus(e.message, "error");
+    input.value = content;
+  } finally {
+    showLoading(btn, false);
+    input.focus();
   }
 }
 
 async function saveMe() {
-  const name = $("meNameInput").value;
-  const v = name != null ? name.trim() : "";
-  if (!v) return;
+  const input = $("meNameInput");
+  const name = input.value.trim();
+  if (!name) return;
+  
   try {
-    const me = await apiPost("/api/me", { name: v });
+    const me = await apiPost("/api/me", { name });
     state.me = me;
-    $("meId").textContent = `${me.name} / ${me.nodeId} / p2p:${me.p2pPort} web:${me.webPort}`;
-    setStatus("已保存");
-    await refreshAll();
+    updateMeHeader(me);
+    setStatus("昵称已更新");
   } catch (e) {
-    setStatus(e.message);
+    setStatus(e.message, "error");
+  }
+}
+
+function updateMeHeader(me) {
+  $("meId").textContent = `${me.name || "未设置"} (${me.nodeId.substring(0, 8)})`;
+}
+
+async function inviteMembers() {
+  if (!state.current || state.current.type !== "ROOM") return;
+  const btn = $("confirmCreateBtn");
+  showLoading(btn, true);
+  try {
+    const members = Array.from(state.selectedMembers);
+    await apiPost("/api/rooms/invite", { 
+      roomId: state.current.roomId, 
+      members: members
+    });
+    closeModal("createRoomModal");
+    setStatus("邀请已发送");
+    loadRoomMembers();
+  } catch (e) {
+    setStatus(e.message, "error");
+  } finally {
+    showLoading(btn, false);
   }
 }
 
 async function createRoom() {
-  const roomName = $("createRoomName").value;
-  const v = roomName != null ? roomName.trim() : "";
-  if (!v) return;
+  if (state.modalMode === "INVITE") {
+    return inviteMembers();
+  }
+  const nameInput = $("createRoomName");
+  const descInput = $("createRoomDesc");
+  const roomName = nameInput.value.trim();
+  const roomDesc = descInput.value.trim();
+  const roomType = document.querySelector('input[name="roomType"]:checked').value;
+  
+  if (!roomName) return;
+  
+  const btn = $("confirmCreateBtn");
+  showLoading(btn, true);
+  
   try {
-    const data = await apiPost("/api/rooms", { roomName: v });
-    $("createRoomName").value = "";
+    const members = Array.from(state.selectedMembers);
+    const data = await apiPost("/api/rooms", { 
+      roomName, 
+      description: roomDesc,
+      policy: roomType,
+      initialMembers: members
+    });
+    closeModal("createRoomModal");
     await refreshAll();
-    await openRoom(data.roomId, v);
+    await window.openRoom(data.roomId, roomName);
   } catch (e) {
-    setStatus(e.message);
+    setStatus(e.message, "error");
+  } finally {
+    showLoading(btn, false);
   }
 }
 
 async function joinRoom() {
-  const roomId = $("joinRoomId").value;
-  const inviter = $("joinInviter").value;
-  const rid = roomId != null ? roomId.trim() : "";
-  const inv = inviter != null ? inviter.trim() : "";
-  if (!rid || !inv || !inv.includes(":")) return;
+  const idInput = $("joinRoomId");
+  const invInput = $("joinInviter");
+  const rid = idInput.value.trim();
+  const inv = invInput.value.trim();
+  
+  if (!rid || !inv.includes(":")) return;
+  
   const [ip, portStr] = inv.split(":", 2);
   const port = parseInt(portStr, 10);
-  if (!ip || !port) return;
+  
+  const btn = $("confirmJoinBtn");
+  showLoading(btn, true);
+  
   try {
     await apiPost("/api/rooms/join", { roomId: rid, inviterIp: ip, inviterPort: port });
-    $("joinRoomId").value = "";
-    $("joinInviter").value = "";
+    closeModal("joinRoomModal");
     await refreshAll();
-    const room = state.rooms.find(r => r.roomId === rid);
-    await openRoom(rid, room ? (room.roomName || rid) : rid);
+    await window.openRoom(rid, rid);
   } catch (e) {
-    setStatus(e.message);
+    setStatus(e.message, "error");
+  } finally {
+    showLoading(btn, false);
   }
 }
 
-async function showMembers() {
-  if (!state.current || state.current.type !== "ROOM") return;
-  try {
-    const members = await apiGet("/api/rooms/members?roomId=" + encodeURIComponent(state.current.roomId));
-    const body = document.createElement("div");
-    for (const m of members) {
-      const div = document.createElement("div");
-      div.className = "item";
-      div.innerHTML = `<div>${escapeHtml(m.name || m.nodeId)}</div>` +
-        `<div class="sub">${escapeHtml(m.nodeId)} ${escapeHtml(m.ip || "")}:${m.p2pPort || ""}</div>`;
-      body.appendChild(div);
-    }
-    openModal("Room Members", body);
-  } catch (e) {
-    setStatus(e.message);
+function toggleSidebar(show) {
+  const sidebar = $("sidebar-container");
+  const overlay = $("sidebar-overlay");
+  if (show) {
+    sidebar.classList.add("open");
+    overlay.classList.add("open");
+  } else {
+    sidebar.classList.remove("open");
+    overlay.classList.remove("open");
   }
-}
-
-function openModal(title, bodyEl) {
-  $("modalTitle").textContent = title;
-  const body = $("modalBody");
-  body.innerHTML = "";
-  body.appendChild(bodyEl);
-  $("modal").classList.remove("hidden");
-}
-
-function closeModal() {
-  $("modal").classList.add("hidden");
 }
 
 function escapeHtml(s) {
-  return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[m]));
 }
 
 async function init() {
   try {
     const me = await apiGet("/api/me");
     state.me = me;
-    $("meId").textContent = `${me.name} / ${me.nodeId} / p2p:${me.p2pPort} web:${me.webPort}`;
+    updateMeHeader(me);
     $("meNameInput").value = me.name || "";
   } catch (e) {
-    setStatus(e.message);
+    console.error(e);
   }
 
-  $("meSaveBtn").addEventListener("click", saveMe);
+  $("menuToggle").addEventListener("click", () => toggleSidebar(true));
+  $("sidebar-overlay").addEventListener("click", () => toggleSidebar(false));
+  $("meNameInput").addEventListener("blur", saveMe);
   $("sendBtn").addEventListener("click", sendCurrent);
-  $("composerInput").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") sendCurrent();
+  $("composerInput").addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendCurrent(); }
   });
   $("loadMoreBtn").addEventListener("click", loadMore);
-  $("createRoomBtn").addEventListener("click", createRoom);
-  $("joinRoomBtn").addEventListener("click", joinRoom);
-  $("membersBtn").addEventListener("click", showMembers);
-  $("modalCloseBtn").addEventListener("click", closeModal);
-  $("modal").addEventListener("click", (ev) => {
-    if (ev.target && ev.target.id === "modal") closeModal();
+  $("membersBtn").addEventListener("click", () => openModal("roomMembersModal"));
+  $("showCreateRoomBtn").addEventListener("click", () => openModal("createRoomModal"));
+  $("createRoomName").addEventListener("input", updateCreateBtnState);
+  $("memberSearch").addEventListener("input", e => renderMemberSelector(e.target.value));
+  $("confirmCreateBtn").addEventListener("click", createRoom);
+  $("cancelCreateBtn").addEventListener("click", () => closeModal("createRoomModal"));
+  $("closeModalBtn").addEventListener("click", () => closeModal("createRoomModal"));
+  
+  // Join modal events
+  $("confirmJoinBtn").addEventListener("click", joinRoom);
+  $("cancelJoinBtn").addEventListener("click", () => closeModal("joinRoomModal"));
+  $("closeJoinModalBtn").addEventListener("click", () => closeModal("joinRoomModal"));
+
+  // Members modal events
+  $("closeMembersModalBtn").addEventListener("click", () => closeModal("roomMembersModal"));
+  $("closeMembersBtn").addEventListener("click", () => closeModal("roomMembersModal"));
+  $("addMemberBtn").addEventListener("click", () => {
+    closeModal("roomMembersModal");
+    openModal("createRoomModal", "INVITE");
+  });
+
+  $("viewMoreRoomsBtn").addEventListener("click", () => {
+    state.showAllRooms = true;
+    renderRooms();
   });
 
   await refreshAll();
-  state.pollTimer = setInterval(pollOnce, 800);
-  setInterval(refreshAll, 3000);
+  state.pollTimer = setInterval(pollOnce, 1000);
+  setInterval(refreshAll, 5000);
 }
 
 init();

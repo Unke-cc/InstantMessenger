@@ -102,6 +102,11 @@ public final class Dto {
         public String token;
     }
 
+    public static final class InviteMembersRequest {
+        public String roomId;
+        public List<String> members;
+    }
+
     public static final class RoomDto {
         public String roomId;
         public String roomName;
@@ -116,6 +121,8 @@ public final class Dto {
         public String ip;
         public int p2pPort;
         public long lastSeen;
+        public String role;
+        public boolean online;
     }
 
     public static final class SendRoomRequest {

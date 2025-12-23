@@ -89,6 +89,7 @@ public class ApiRoutes {
         Spark.get("/api/rooms", this::getRooms);
         Spark.post("/api/rooms", this::postRoom);
         Spark.post("/api/rooms/join", this::postJoinRoom);
+        Spark.post("/api/rooms/invite", this::postInviteMembers);
         Spark.get("/api/rooms/members", this::getRoomMembers);
         Spark.post("/api/rooms/sync", this::postSyncRoom);
 
@@ -288,11 +289,26 @@ public class ApiRoutes {
         }
     }
 
+    private Object postInviteMembers(Request req, Response res) {
+        res.type("application/json");
+        Dto.InviteMembersRequest body = parse(req.body(), Dto.InviteMembersRequest.class);
+        if (body == null) return gson.toJson(Dto.fail("Bad body"));
+        if (body.roomId == null || body.roomId.trim().isEmpty()) return gson.toJson(Dto.fail("Missing roomId"));
+        if (body.members == null || body.members.isEmpty()) return gson.toJson(Dto.fail("Missing members"));
+        try {
+            roomMembershipService.inviteMembers(body.roomId.trim(), body.members);
+            return gson.toJson(Dto.ok(true));
+        } catch (Exception e) {
+            return gson.toJson(Dto.fail("Invite failed: " + e.getMessage()));
+        }
+    }
+
     private Object getRoomMembers(Request req, Response res) {
         res.type("application/json");
         String roomId = q(req, "roomId");
         if (roomId == null || roomId.trim().isEmpty()) return gson.toJson(Dto.fail("Missing roomId"));
         try {
+            long now = System.currentTimeMillis();
             List<RoomMember> members = roomMemberDao.listMembers(roomId.trim());
             List<Dto.RoomMemberDto> out = new ArrayList<>();
             for (RoomMember m : members) {
@@ -303,6 +319,8 @@ public class ApiRoutes {
                 dto.ip = m.lastKnownIp;
                 dto.p2pPort = m.lastKnownP2pPort;
                 dto.lastSeen = m.lastSeen;
+                dto.role = m.role;
+                dto.online = (m.lastSeen > 0) && (now - m.lastSeen) < Settings.PEER_TTL_MS;
                 out.add(dto);
             }
             return gson.toJson(Dto.ok(out));

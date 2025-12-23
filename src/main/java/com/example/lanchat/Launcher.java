@@ -36,16 +36,26 @@ public class Launcher {
         String dbName = null;
 
         if (args.length > 0) {
-            p2pPort = Integer.parseInt(args[0]);
-        }
-        if (args.length > 1) {
-            name = args[1];
-        }
-        if (args.length > 2) {
-            webPort = Integer.parseInt(args[2]);
-        }
-        if (args.length > 3) {
-            dbName = args[3];
+            for (int i = 0; i < args.length; i++) {
+                if ("--p2pPort".equals(args[i]) && i + 1 < args.length) {
+                    p2pPort = Integer.parseInt(args[++i]);
+                } else if ("--name".equals(args[i]) && i + 1 < args.length) {
+                    name = args[++i];
+                } else if ("--webPort".equals(args[i]) && i + 1 < args.length) {
+                    webPort = Integer.parseInt(args[++i]);
+                } else if ("--db".equals(args[i]) && i + 1 < args.length) {
+                    dbName = args[++i];
+                } else if (!args[i].startsWith("--")) {
+                    // Fallback to positional if first arg is not a flag
+                    if (i == 0) {
+                        p2pPort = Integer.parseInt(args[i]);
+                        if (args.length > 1) name = args[1];
+                        if (args.length > 2) webPort = Integer.parseInt(args[2]);
+                        if (args.length > 3) dbName = args[3];
+                        break;
+                    }
+                }
+            }
         }
         
         if (dbName == null || dbName.isBlank()) {

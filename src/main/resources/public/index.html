@@ -3,79 +3,193 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>LAN Chat</title>
-  <link rel="stylesheet" href="/style.css" />
+  <title>LAN Chat | P2P 局域网通讯</title>
+  <link rel="stylesheet" href="/style.css?v=1.2" />
 </head>
 <body>
-  <div id="topbar">
-    <div id="meLine">
-      <span id="meId"></span>
-      <input id="meNameInput" placeholder="昵称" />
-      <button id="meSaveBtn">保存昵称</button>
-      <span id="statusLine"></span>
+  <div id="app-container">
+    <header id="topbar">
+      <button id="menuToggle" title="切换侧边栏">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+      </button>
+      <div id="meLine">
+        <div class="user-avatar-small" id="meAvatar"></div>
+        <div class="me-info">
+          <span id="meId"></span>
+          <div class="me-name-edit">
+            <input id="meNameInput" placeholder="设置你的昵称" />
+          </div>
+        </div>
+        <div id="statusLine" style="margin-left: auto; font-size: 12px; color: var(--accent-online);">在线</div>
+      </div>
+    </header>
+
+    <main id="layout">
+      <div id="sidebar-overlay" class="sidebar-overlay"></div>
+      
+      <!-- Sidebar Drawer -->
+      <aside id="sidebar-container">
+        <!-- Peers Section -->
+        <section class="section">
+          <div class="section-header">
+            <span class="sectionTitle">在线用户 (<span id="peerCount">0</span>)</span>
+          </div>
+          <div id="peersList" class="list scrollable">
+            <!-- Loading placeholder -->
+            <div class="item skeleton" style="height: 40px; margin-bottom: 4px;"></div>
+            <div class="item skeleton" style="height: 40px;"></div>
+          </div>
+        </section>
+
+        <!-- Rooms Section -->
+        <section class="section" style="flex: 1; min-height: 0;">
+          <div class="section-header">
+            <span class="sectionTitle">群组列表</span>
+            <button id="showCreateRoomBtn" class="btn-icon" title="创建群组">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+          </div>
+          <div id="roomsList" class="list scrollable">
+            <!-- Loading placeholder -->
+            <div class="item skeleton" style="height: 40px; margin-bottom: 4px;"></div>
+          </div>
+          <button id="viewMoreRoomsBtn" class="btn-text hidden">查看更多群组</button>
+        </section>
+
+        <!-- Conversations Section -->
+        <section class="section" style="border-bottom: none;">
+          <div class="section-header">
+            <span class="sectionTitle">最近会话</span>
+          </div>
+          <div id="convsList" class="list scrollable" style="max-height: 200px;"></div>
+        </section>
+      </aside>
+
+      <!-- Main Chat Area -->
+      <section id="main-content">
+        <header id="chatHeader">
+          <div class="chat-header-info">
+            <div id="chatTitle">未选择会话</div>
+            <div id="chatSubtitle">点选左侧联系人开始聊天</div>
+          </div>
+          <div class="header-actions">
+            <button id="membersBtn" class="btn-icon hidden" title="查看成员">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </button>
+          </div>
+        </header>
+
+        <div id="messagesPane" class="scrollable">
+          <div id="messagesList"></div>
+          <button id="loadMoreBtn" class="btn-text hidden" style="width: 100%;">查看更早的消息</button>
+        </div>
+
+        <footer id="composer">
+          <div class="composer-container">
+            <input id="composerInput" placeholder="输入消息内容..." autocomplete="off" />
+            <button id="sendBtn" class="btn-primary">发送</button>
+          </div>
+        </footer>
+      </section>
+    </main>
+  </div>
+
+  <!-- Create Room Modal -->
+  <div id="createRoomModal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3>创建群组</h3>
+        <button id="closeModalBtn" class="btn-icon" title="关闭">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="createRoomName">群组名称 <span class="required">*</span></label>
+          <input id="createRoomName" placeholder="输入群组名称" maxlength="32" />
+        </div>
+        
+        <div class="form-group">
+          <label>群组类型</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="roomType" value="public" checked> 公开
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="roomType" value="private"> 私密
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>邀请成员</label>
+          <div class="member-selector">
+            <input id="memberSearch" placeholder="搜索成员..." />
+            <div id="memberChecklist" class="scrollable">
+              <!-- 会在这里动态渲染成员列表 -->
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="createRoomDesc">群组描述</label>
+          <textarea id="createRoomDesc" placeholder="简单描述一下群组 (可选)" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelCreateBtn" class="btn-text">取消</button>
+        <button id="confirmCreateBtn" class="btn-primary" disabled>立即创建</button>
+      </div>
     </div>
   </div>
 
-  <div id="layout">
-    <div id="leftPane">
-      <div class="section">
-        <div class="sectionTitle">Peers</div>
-        <div id="peersList" class="list"></div>
+  <!-- Join Room Modal (Keep separate for clarity or merge later) -->
+  <div id="joinRoomModal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3>加入群组</h3>
+        <button id="closeJoinModalBtn" class="btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
       </div>
-
-      <div class="section">
-        <div class="sectionTitle">Rooms</div>
-        <div class="row">
-          <input id="createRoomName" placeholder="roomName" />
-          <button id="createRoomBtn">创建</button>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>群 ID (Room ID)</label>
+          <input id="joinRoomId" placeholder="输入 Room ID" />
         </div>
-        <div class="row">
-          <input id="joinRoomId" placeholder="roomId" />
+        <div class="form-group">
+          <label>邀请人地址</label>
+          <input id="joinInviter" placeholder="IP:Port (例如 192.168.1.5:19000)" />
         </div>
-        <div class="row">
-          <input id="joinInviter" placeholder="inviterIp:port" />
-          <button id="joinRoomBtn">加入</button>
-        </div>
-        <div id="roomsList" class="list"></div>
       </div>
-    </div>
-
-    <div id="midPane">
-      <div class="section">
-        <div class="sectionTitle">Conversations</div>
-        <div id="convsList" class="list"></div>
-      </div>
-    </div>
-
-    <div id="rightPane">
-      <div id="chatHeader">
-        <div id="chatTitle">未选择会话</div>
-        <button id="membersBtn" class="hidden">成员</button>
-      </div>
-
-      <div id="messagesPane">
-        <button id="loadMoreBtn" class="hidden">加载更多</button>
-        <div id="messagesList"></div>
-      </div>
-
-      <div id="composer">
-        <input id="composerInput" placeholder="输入消息..." />
-        <button id="sendBtn">发送</button>
+      <div class="modal-footer">
+        <button id="cancelJoinBtn" class="btn-text">取消</button>
+        <button id="confirmJoinBtn" class="btn-primary">确认加入</button>
       </div>
     </div>
   </div>
 
-  <div id="modal" class="hidden">
-    <div id="modalBox">
-      <div id="modalTitle"></div>
-      <div id="modalBody"></div>
-      <div id="modalActions">
-        <button id="modalCloseBtn">关闭</button>
+  <!-- Room Members Modal -->
+  <div id="roomMembersModal" class="modal-overlay hidden">
+    <div class="modal-content glass-panel">
+      <div class="modal-header">
+        <h3 id="memberModalTitle">群成员</h3>
+        <button id="closeMembersModalBtn" class="btn-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="roomMembersList" class="list scrollable" style="max-height: 400px;">
+          <!-- 动态渲染群成员 -->
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="addMemberBtn" class="btn-primary">邀请新成员</button>
+        <button id="closeMembersBtn" class="btn-text">关闭</button>
       </div>
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script src="/app.js?v=1.2"></script>
 </body>
 </html>
-

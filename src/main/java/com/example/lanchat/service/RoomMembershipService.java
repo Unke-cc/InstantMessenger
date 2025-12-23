@@ -96,8 +96,39 @@ public class RoomMembershipService implements TransportService.Handler {
         }
     }
 
+    public void inviteMembers(String roomId, List<String> peerNodeIds) throws Exception {
+        Room r = roomDao.getById(roomId);
+        if (r == null) throw new IllegalArgumentException("Room not found");
+
+        for (String peerId : peerNodeIds) {
+            com.example.lanchat.store.PeerDao.Peer p = peerDao.getPeerByNodeId(peerId);
+            if (p == null) continue;
+
+            MessageEnvelope req = new MessageEnvelope();
+            req.protocolVersion = 1;
+            req.type = MessageType.INVITE;
+            req.msgId = UUID.randomUUID().toString();
+            req.from = new MessageEnvelope.NodeInfo(identity.nodeId, identity.displayName);
+            req.ts = System.currentTimeMillis();
+            req.clock = clock.tick();
+
+            JsonObject payload = new JsonObject();
+            payload.addProperty("roomId", roomId);
+            payload.addProperty("roomName", r.roomName);
+            payload.addProperty("inviterIp", ""); // Optional, the recipient will use the sender's IP
+            payload.addProperty("inviterPort", identity.p2pPort);
+            req.payload = payload;
+
+            transport.send(p.nodeId, p.ip, p.p2pPort, req);
+        }
+    }
+
     private void handleIncoming(PeerInfo remote, MessageEnvelope env) throws Exception {
         if (env == null || env.type == null) return;
+        if (MessageType.INVITE.equals(env.type)) {
+            handleInvite(remote, env);
+            return;
+        }
         if (MessageType.JOIN_REQUEST.equals(env.type)) {
             handleJoinRequest(remote, env);
             return;
@@ -109,6 +140,31 @@ public class RoomMembershipService implements TransportService.Handler {
         if (MessageType.MEMBER_EVENT.equals(env.type)) {
             handleMemberEvent(remote, env);
         }
+    }
+
+    private void handleInvite(PeerInfo remote, MessageEnvelope env) {
+        if (env.payload == null) return;
+        JsonObject payload = env.payload.getAsJsonObject();
+        String roomId = payload.has("roomId") ? payload.get("roomId").getAsString() : null;
+        if (roomId == null) return;
+
+        // Automatically join the room when invited in this simple P2P model
+        // In a more complex app, we might show a notification/prompt first.
+        String inviterIp = remote.ip;
+        int inviterPort = payload.has("inviterPort") ? payload.get("inviterPort").getAsInt() : remote.p2pPort;
+
+        new Thread(() -> {
+            try {
+                // Wait a bit to ensure connections are stable
+                Thread.sleep(500);
+                joinRoom(roomId, inviterIp, inviterPort, null);
+                if (joinAcceptedListener != null) {
+                    joinAcceptedListener.accept(roomId);
+                }
+            } catch (Exception e) {
+                System.err.println("Auto-join from invite failed: " + e.getMessage());
+            }
+        }).start();
     }
 
     private void handleJoinRequest(PeerInfo remote, MessageEnvelope env) throws Exception {
@@ -138,6 +194,7 @@ public class RoomMembershipService implements TransportService.Handler {
         m.lastKnownIp = remote.ip;
         m.lastKnownP2pPort = joinerP2pPort > 0 ? joinerP2pPort : remote.p2pPort;
         m.lastSeen = now;
+        m.role = "MEMBER";
         roomMemberDao.upsert(m);
 
         try {
@@ -169,6 +226,7 @@ public class RoomMembershipService implements TransportService.Handler {
             if (rm.lastKnownIp != null) mm.addProperty("addr", rm.lastKnownIp);
             if (rm.lastKnownP2pPort > 0) mm.addProperty("p2pPort", rm.lastKnownP2pPort);
             mm.addProperty("lastSeen", rm.lastSeen);
+            if (rm.role != null) mm.addProperty("role", rm.role);
             snapshot.add(mm);
         }
         out.add("memberSnapshot", snapshot);
@@ -251,6 +309,7 @@ public class RoomMembershipService implements TransportService.Handler {
                 m.lastKnownIp = mObj.has("addr") ? mObj.get("addr").getAsString() : null;
                 m.lastKnownP2pPort = mObj.has("p2pPort") ? mObj.get("p2pPort").getAsInt() : 0;
                 m.lastSeen = mObj.has("lastSeen") ? mObj.get("lastSeen").getAsLong() : 0;
+                m.role = mObj.has("role") ? mObj.get("role").getAsString() : "MEMBER";
                 roomMemberDao.upsert(m);
             }
         }
@@ -262,6 +321,7 @@ public class RoomMembershipService implements TransportService.Handler {
         self.lastKnownIp = null;
         self.lastKnownP2pPort = identity.p2pPort;
         self.lastSeen = System.currentTimeMillis();
+        self.role = "MEMBER";
         roomMemberDao.upsert(self);
 
         CompletableFuture<Boolean> f = pendingJoinByRoomId.get(roomId);
@@ -300,6 +360,7 @@ public class RoomMembershipService implements TransportService.Handler {
                 m.lastKnownP2pPort = 0;
             }
             m.lastSeen = System.currentTimeMillis();
+            m.role = "MEMBER";
             roomMemberDao.upsert(m);
         } else if ("LEAVE".equals(op)) {
             roomMemberDao.removeMember(roomId, memberNodeId);

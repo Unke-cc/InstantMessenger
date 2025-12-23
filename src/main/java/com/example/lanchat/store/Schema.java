@@ -114,8 +114,13 @@ public class Schema {
                     "last_known_ip TEXT, " +
                     "last_known_p2p_port INTEGER, " +
                     "last_seen INTEGER, " +
+                    "role TEXT, " +
                     "PRIMARY KEY(room_id, member_node_id)" +
                     ")");
+            try {
+                stmt.execute("ALTER TABLE room_members ADD COLUMN role TEXT");
+            } catch (SQLException ignored) {
+            }
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_room_members_room_id ON room_members(room_id)");
 
             stmt.execute("CREATE TABLE IF NOT EXISTS room_member_events (" +

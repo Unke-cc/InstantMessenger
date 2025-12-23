@@ -16,16 +16,18 @@ public class RoomMemberDao {
         public String lastKnownIp;
         public int lastKnownP2pPort;
         public long lastSeen;
+        public String role;
     }
 
     public void upsert(RoomMember m) throws SQLException {
         Connection conn = Db.getConnection();
-        String sql = "INSERT INTO room_members (room_id, member_node_id, member_name, last_known_ip, last_known_p2p_port, last_seen) VALUES (?, ?, ?, ?, ?, ?) " +
+        String sql = "INSERT INTO room_members (room_id, member_node_id, member_name, last_known_ip, last_known_p2p_port, last_seen, role) VALUES (?, ?, ?, ?, ?, ?, ?) " +
                 "ON CONFLICT(room_id, member_node_id) DO UPDATE SET " +
                 "member_name = excluded.member_name, " +
                 "last_known_ip = COALESCE(excluded.last_known_ip, room_members.last_known_ip), " +
                 "last_known_p2p_port = CASE WHEN excluded.last_known_p2p_port > 0 THEN excluded.last_known_p2p_port ELSE room_members.last_known_p2p_port END, " +
-                "last_seen = CASE WHEN excluded.last_seen > 0 THEN excluded.last_seen ELSE room_members.last_seen END";
+                "last_seen = CASE WHEN excluded.last_seen > 0 THEN excluded.last_seen ELSE room_members.last_seen END, " +
+                "role = COALESCE(excluded.role, room_members.role)";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, m.roomId);
             ps.setString(2, m.memberNodeId);
@@ -33,6 +35,7 @@ public class RoomMemberDao {
             ps.setString(4, m.lastKnownIp);
             ps.setInt(5, m.lastKnownP2pPort);
             ps.setLong(6, m.lastSeen);
+            ps.setString(7, m.role);
             ps.executeUpdate();
         }
     }
@@ -93,6 +96,7 @@ public class RoomMemberDao {
         m.lastKnownIp = rs.getString("last_known_ip");
         m.lastKnownP2pPort = rs.getInt("last_known_p2p_port");
         m.lastSeen = rs.getLong("last_seen");
+        m.role = rs.getString("role");
         return m;
     }
 }

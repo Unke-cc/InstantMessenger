@@ -42,6 +42,7 @@ public class RoomService {
         self.lastKnownIp = null;
         self.lastKnownP2pPort = identity.p2pPort;
         self.lastSeen = now;
+        self.role = "OWNER";
         roomMemberDao.upsert(self);
 
         return roomId;
