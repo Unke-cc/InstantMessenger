@@ -24,6 +24,8 @@ import com.google.gson.JsonObject;
 import java.sql.SQLException;
 import java.util.Scanner;
 import java.util.UUID;
+import java.awt.Desktop;
+import java.net.URI;
 
 public class Launcher {
 
@@ -142,7 +144,10 @@ public class Launcher {
         );
         WebServer webServer = new WebServer(identity.webPort, apiRoutes);
         webServer.start();
-        System.out.println("Web UI: http://localhost:" + identity.webPort + "/");
+        String url = "http://localhost:" + identity.webPort + "/";
+        System.out.println("Web UI: " + url);
+
+        openBrowser(url);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutting down...");
@@ -178,6 +183,31 @@ public class Launcher {
             }
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private static void openBrowser(String url) {
+        if (Desktop.isDesktopSupported()) {
+            Desktop desktop = Desktop.getDesktop();
+            try {
+                desktop.browse(new URI(url));
+            } catch (Exception e) {
+                System.err.println("Failed to open browser automatically: " + e.getMessage());
+            }
+        } else {
+            Runtime runtime = Runtime.getRuntime();
+            try {
+                String os = System.getProperty("os.name").toLowerCase();
+                if (os.contains("mac")) {
+                    runtime.exec("open " + url);
+                } else if (os.contains("win")) {
+                    runtime.exec("rundll32 url.dll,FileProtocolHandler " + url);
+                } else if (os.contains("nix") || os.contains("nux")) {
+                    runtime.exec("xdg-open " + url);
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to open browser via runtime: " + e.getMessage());
+            }
         }
     }
 }

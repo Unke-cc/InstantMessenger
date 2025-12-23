@@ -199,7 +199,19 @@ This demo starts a local-only Web UI (serves `localhost` only):
    - Restart processes and messages/history remain in SQLite
 
 ## Offline Room Sync (Step 6)
-
+dist/
+├── LANChat-v1.0.jar       (通过 mvn package 生成的胖 JAR)
+├── 启动-Windows.bat       (Windows 双击启动)
+├── 启动-macOS.command     (macOS 双击启动)
+└── 启动-Linux.sh          (Linux 双击启动)dist/
+├── LANChat-v1.0.jar       (通过 mvn package 生成的胖 JAR)
+├── 启动-Windows.bat       (Windows 双击启动)
+├── 启动-macOS.command     (macOS 双击启动)
+└── 启动-Linux.sh          (Linux 双击启动)dist/
+├── LANChat-v1.0.jar       (通过 mvn package 生成的胖 JAR)
+├── 启动-Windows.bat       (Windows 双击启动)
+├── 启动-macOS.command     (macOS 双击启动)
+└── 启动-Linux.sh          (Linux 双击启动)
 This step adds **best-effort offline room message sync** (no central server):
 - Each room maintains a local cursor in SQLite table `room_cursor(room_id, last_clock_value, updated_at)`.
 - When a node comes back online / joins a room / opens a room in Web UI, it requests missing room messages from online members.
