@@ -13,12 +13,14 @@
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/PeerDirectory.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/RoomMembershipService.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/RoomService.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/SyncService.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/TransportService.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/ConversationDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/Db.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/IdentityDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/MessageDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/PeerDao.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/RoomCursorDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/RoomDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/RoomEventDao.java
 /Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/RoomMemberDao.java

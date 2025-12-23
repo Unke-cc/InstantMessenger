@@ -126,6 +126,12 @@ public class Schema {
                     "clock_value TEXT, " +
                     "ts INTEGER" +
                     ")");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS room_cursor (" +
+                    "room_id TEXT PRIMARY KEY, " +
+                    "last_clock_value TEXT, " +
+                    "updated_at INTEGER" +
+                    ")");
         }
     }
 }

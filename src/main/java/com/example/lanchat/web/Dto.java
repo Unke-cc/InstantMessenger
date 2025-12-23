@@ -123,9 +123,12 @@ public final class Dto {
         public String content;
     }
 
+    public static final class SyncRoomRequest {
+        public String roomId;
+    }
+
     public static final class PollResponse {
         public long maxTs;
         public List<MessageDto> messages;
     }
 }
-

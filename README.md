@@ -197,3 +197,47 @@ This demo starts a local-only Web UI (serves `localhost` only):
    - Private chat shows `SENT -> DELIVERED` after ACK
    - Alice creates a room, Bob joins with `roomId + inviterIp:port`, then room chat works
    - Restart processes and messages/history remain in SQLite
+
+## Offline Room Sync (Step 6)
+
+This step adds **best-effort offline room message sync** (no central server):
+- Each room maintains a local cursor in SQLite table `room_cursor(room_id, last_clock_value, updated_at)`.
+- When a node comes back online / joins a room / opens a room in Web UI, it requests missing room messages from online members.
+- Sync is **eventually consistent** and depends on whether online nodes still have the missing messages.
+
+### Web API
+- `POST /api/rooms/sync { "roomId": "<uuid>" }` triggers background sync for the room.
+
+### Demo (3 nodes: A/B/C)
+1. **Run three nodes:**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.Launcher 19301 Alice 18301 /tmp/webA.db
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.Launcher 19302 Bob   18302 /tmp/webB.db
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.Launcher 19303 Carol 18303 /tmp/webC.db
+   ```
+
+2. **A creates a room, B and C join:**
+   - Open:
+     - A: `http://localhost:18301/`
+     - B: `http://localhost:18302/`
+     - C: `http://localhost:18303/`
+   - In A UI: create a room and copy `roomId`.
+   - In B/C UI: join with `roomId` and inviter `127.0.0.1:19301`.
+
+3. **B goes offline, A/C keep chatting:**
+   - Stop Bob process.
+   - In A and C, send multiple room messages.
+
+4. **B comes back and syncs:**
+   - Restart Bob process.
+   - Open B room conversation: UI triggers sync automatically, missing messages appear via polling.
+   - Or manually call:
+     ```bash
+     curl -s -X POST http://localhost:18302/api/rooms/sync \
+       -H 'Content-Type: application/json' \
+       -d '{"roomId":"<roomId>"}'
+     ```
+
+### Notes
+- This is a P2P system without a central server: missing messages can only be fetched if an online member still has them.
+- Duplicate messages from multiple sources are deduped by `seen_messages(msg_id)`.

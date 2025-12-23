@@ -19,6 +19,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 public class RoomMembershipService implements TransportService.Handler {
 
@@ -31,6 +32,7 @@ public class RoomMembershipService implements TransportService.Handler {
     private final PeerDao peerDao;
     private final ConversationService conversationService;
     private final ConcurrentHashMap<String, CompletableFuture<Boolean>> pendingJoinByRoomId = new ConcurrentHashMap<>();
+    private volatile Consumer<String> joinAcceptedListener;
 
     public RoomMembershipService(Identity identity, LamportClock clock, TransportService transport) {
         this.identity = identity;
@@ -41,6 +43,10 @@ public class RoomMembershipService implements TransportService.Handler {
         this.roomEventDao = new RoomEventDao();
         this.peerDao = new PeerDao();
         this.conversationService = new ConversationService();
+    }
+
+    public void onJoinAccepted(Consumer<String> listener) {
+        this.joinAcceptedListener = listener;
     }
 
     public void joinRoom(String roomId, String inviterIp, int inviterPort, String token) throws Exception {
@@ -260,6 +266,9 @@ public class RoomMembershipService implements TransportService.Handler {
 
         CompletableFuture<Boolean> f = pendingJoinByRoomId.get(roomId);
         if (f != null) f.complete(true);
+
+        Consumer<String> listener = joinAcceptedListener;
+        if (listener != null) listener.accept(roomId);
     }
 
     private void handleMemberEvent(PeerInfo remote, MessageEnvelope env) throws Exception {

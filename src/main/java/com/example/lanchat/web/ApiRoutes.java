@@ -5,6 +5,7 @@ import com.example.lanchat.service.GroupMessageService;
 import com.example.lanchat.service.MessageService;
 import com.example.lanchat.service.RoomMembershipService;
 import com.example.lanchat.service.RoomService;
+import com.example.lanchat.service.SyncService;
 import com.example.lanchat.store.ConversationDao;
 import com.example.lanchat.store.ConversationDao.Conversation;
 import com.example.lanchat.store.IdentityDao;
@@ -41,6 +42,7 @@ public class ApiRoutes {
     private final RoomService roomService;
     private final RoomMembershipService roomMembershipService;
     private final GroupMessageService groupMessageService;
+    private final SyncService syncService;
 
     public ApiRoutes(
             Identity identity,
@@ -53,7 +55,8 @@ public class ApiRoutes {
             MessageService messageService,
             RoomService roomService,
             RoomMembershipService roomMembershipService,
-            GroupMessageService groupMessageService
+            GroupMessageService groupMessageService,
+            SyncService syncService
     ) {
         this.gson = new Gson();
         this.identity = identity;
@@ -67,6 +70,7 @@ public class ApiRoutes {
         this.roomService = roomService;
         this.roomMembershipService = roomMembershipService;
         this.groupMessageService = groupMessageService;
+        this.syncService = syncService;
     }
 
     public void register() {
@@ -86,6 +90,7 @@ public class ApiRoutes {
         Spark.post("/api/rooms", this::postRoom);
         Spark.post("/api/rooms/join", this::postJoinRoom);
         Spark.get("/api/rooms/members", this::getRoomMembers);
+        Spark.post("/api/rooms/sync", this::postSyncRoom);
 
         Spark.get("/api/poll", this::getPoll);
     }
@@ -306,6 +311,14 @@ public class ApiRoutes {
         }
     }
 
+    private Object postSyncRoom(Request req, Response res) {
+        res.type("application/json");
+        Dto.SyncRoomRequest body = parse(req.body(), Dto.SyncRoomRequest.class);
+        if (body == null || body.roomId == null || body.roomId.trim().isEmpty()) return gson.toJson(Dto.fail("Missing roomId"));
+        syncService.syncRoomAsync(body.roomId.trim());
+        return gson.toJson(Dto.ok(true));
+    }
+
     private Object getPoll(Request req, Response res) {
         res.type("application/json");
         String convId = q(req, "convId");
@@ -417,4 +430,3 @@ public class ApiRoutes {
         }
     }
 }
-

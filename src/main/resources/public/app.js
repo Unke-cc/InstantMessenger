@@ -233,6 +233,14 @@ async function openPrivate(peerNodeId, title) {
 async function openRoom(roomId, title) {
   setCurrent({ type: "ROOM", roomId, title: title || roomId });
   await loadLatest();
+  try {
+    setStatus("正在同步历史消息…");
+    await apiPost("/api/rooms/sync", { roomId });
+    setTimeout(pollOnce, 800);
+    setTimeout(() => setStatus(""), 1500);
+  } catch (e) {
+    setStatus(e.message);
+  }
 }
 
 async function openConversation(c) {
@@ -381,4 +389,3 @@ async function init() {
 }
 
 init();
-

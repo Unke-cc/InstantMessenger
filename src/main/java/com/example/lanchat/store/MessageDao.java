@@ -136,6 +136,23 @@ public class MessageDao {
         return out;
     }
 
+    public List<Message> listRoomMessagesAfterClock(String roomId, String sinceClockValue, int limitPlusOne) throws SQLException {
+        Connection conn = Db.getConnection();
+        String sql = "SELECT * FROM messages " +
+                "WHERE room_id = ? AND clock_value IS NOT NULL AND CAST(clock_value AS INTEGER) > CAST(? AS INTEGER) " +
+                "ORDER BY CAST(clock_value AS INTEGER) ASC, ts ASC LIMIT ?";
+        List<Message> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, roomId);
+            ps.setString(2, sinceClockValue == null || sinceClockValue.isBlank() ? "0" : sinceClockValue);
+            ps.setInt(3, limitPlusOne);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(mapRow(rs));
+            }
+        }
+        return out;
+    }
+
     private Message mapRow(ResultSet rs) throws SQLException {
         Message m = new Message();
         m.msgId = rs.getString("msg_id");

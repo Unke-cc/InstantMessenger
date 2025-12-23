@@ -8,6 +8,7 @@ import com.example.lanchat.service.MessageService;
 import com.example.lanchat.service.PeerDirectory;
 import com.example.lanchat.service.RoomMembershipService;
 import com.example.lanchat.service.RoomService;
+import com.example.lanchat.service.SyncService;
 import com.example.lanchat.service.TransportService;
 import com.example.lanchat.store.Db;
 import com.example.lanchat.store.IdentityDao;
@@ -79,12 +80,14 @@ public class Launcher {
         RoomService roomService = new RoomService(identity);
         RoomMembershipService roomMembershipService = new RoomMembershipService(identity, clock, transport);
         GroupMessageService groupMessageService = new GroupMessageService(identity, clock, transport);
+        SyncService syncService = new SyncService(identity, clock, transport);
 
         transport.onMessage((remote, env) -> {
             if (env != null) clock.observe(env.clock);
             messageService.onMessage(remote, env);
             roomMembershipService.onMessage(remote, env);
             groupMessageService.onMessage(remote, env);
+            syncService.onMessage(remote, env);
 
             if (env == null || env.type == null) return;
             if ("CHAT".equals(env.type) && env.payload != null && env.payload.isJsonObject()) {
@@ -110,6 +113,9 @@ public class Launcher {
         DiscoveryService discoveryService = new DiscoveryService(identity, peerDirectory);
         discoveryService.start();
 
+        roomMembershipService.onJoinAccepted(syncService::syncRoomAsync);
+        syncService.syncAllRoomsAsync();
+
         ApiRoutes apiRoutes = new ApiRoutes(
                 identity,
                 new IdentityDao(),
@@ -121,7 +127,8 @@ public class Launcher {
                 messageService,
                 roomService,
                 roomMembershipService,
-                groupMessageService
+                groupMessageService,
+                syncService
         );
         WebServer webServer = new WebServer(identity.webPort, apiRoutes);
         webServer.start();
@@ -139,6 +146,7 @@ public class Launcher {
             }
             discoveryService.stop();
             peerDirectory.shutdown();
+            syncService.shutdown();
             Db.close();
         }));
 

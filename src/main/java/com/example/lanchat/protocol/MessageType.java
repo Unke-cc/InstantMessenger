@@ -10,6 +10,8 @@ public final class MessageType {
     public static final String JOIN_REQUEST = "JOIN_REQUEST";
     public static final String JOIN_ACCEPT = "JOIN_ACCEPT";
     public static final String MEMBER_EVENT = "MEMBER_EVENT";
+    public static final String SYNC_REQUEST = "SYNC_REQUEST";
+    public static final String SYNC_RESPONSE = "SYNC_RESPONSE";
 
     private MessageType() {
     }
