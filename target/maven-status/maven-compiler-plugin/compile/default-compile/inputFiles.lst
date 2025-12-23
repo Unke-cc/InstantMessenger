@@ -1,0 +1,9 @@
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/Launcher.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/core/Settings.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/discovery/DiscoveryService.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/protocol/MessageEnvelope.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/service/PeerDirectory.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/Db.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/IdentityDao.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/PeerDao.java
+/Users/huwenkai/source/InstantMessenger/src/main/java/com/example/lanchat/store/Schema.java

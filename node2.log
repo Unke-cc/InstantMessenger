@@ -1,0 +1,24 @@
+Starting LAN Chat Node...
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.sqlite.SQLiteJDBCLoader in an unnamed module (file:/Users/huwenkai/source/InstantMessenger/target/lanchat-core-1.0-SNAPSHOT.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Node ID: 5b11d080-6b32-4686-b781-e00437547191
+Name:    Node2
+P2P Port:19002
+Starting bootstrap probe...
+Enter command (add <ip> <port> <name> or quit):
+Updated peer: Node1 (172.20.10.8:19000)
+
+--- Online Peers (1) ---
+Node1 (a8d0c2eb-131d-4588-a307-cbd1d46d3869) @ 172.20.10.8:19000 [LastSeen: 1766460284946]
+Updated peer: Node1 (172.20.10.8:19000)
+Updated peer: Node1 (172.20.10.8:19000)
+Updated peer: Node1 (172.20.10.8:19000)
+
+--- Online Peers (1) ---
+Node1 (a8d0c2eb-131d-4588-a307-cbd1d46d3869) @ 172.20.10.8:19000 [LastSeen: 1766460290962]
+Updated peer: Node1 (172.20.10.8:19000)
+Updated peer: Node1 (172.20.10.8:19000)
+Shutting down...
