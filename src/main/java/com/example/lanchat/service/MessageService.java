@@ -4,6 +4,7 @@ import com.example.lanchat.protocol.MessageEnvelope;
 import com.example.lanchat.protocol.MessageType;
 import com.example.lanchat.service.TransportService.Handler;
 import com.example.lanchat.store.ConversationDao.Conversation;
+import com.example.lanchat.store.IdentityDao.Identity;
 import com.example.lanchat.store.MessageDao;
 import com.example.lanchat.store.MessageDao.Message;
 import com.example.lanchat.store.PeerDao;
@@ -16,8 +17,7 @@ import java.util.UUID;
 
 public class MessageService implements Handler {
 
-    private final String localNodeId;
-    private final String localName;
+    private final Identity identity;
     private final LamportClock clock;
     private final ConversationService conversationService;
     private final MessageDao messageDao;
@@ -25,11 +25,10 @@ public class MessageService implements Handler {
     private final PeerDao peerDao;
     private final TransportService transport;
 
-    public MessageService(String localNodeId, String localName, TransportService transport) {
-        this.localNodeId = localNodeId;
-        this.localName = localName;
+    public MessageService(Identity identity, LamportClock clock, TransportService transport) {
+        this.identity = identity;
         this.transport = transport;
-        this.clock = new LamportClock();
+        this.clock = clock;
         this.conversationService = new ConversationService();
         this.messageDao = new MessageDao();
         this.seenDao = new SeenDao();
@@ -70,12 +69,15 @@ public class MessageService implements Handler {
         Message out = new Message();
         out.msgId = msgId;
         out.convId = conv.convId;
+        out.chatType = "PRIVATE";
+        out.roomId = null;
         out.direction = "OUT";
-        out.fromNodeId = localNodeId;
+        out.fromNodeId = identity.nodeId;
         out.toNodeId = toNodeId;
         out.content = content;
         out.contentType = "text/plain";
         out.ts = now;
+        out.updatedAt = now;
         out.clockValue = String.valueOf(clk);
         out.status = "SENT";
 
@@ -92,7 +94,7 @@ public class MessageService implements Handler {
         env.protocolVersion = 1;
         env.type = MessageType.CHAT;
         env.msgId = msgId;
-        env.from = new MessageEnvelope.NodeInfo(localNodeId, localName);
+        env.from = new MessageEnvelope.NodeInfo(identity.nodeId, identity.displayName);
         env.ts = now;
         env.clock = clk;
 
@@ -130,7 +132,6 @@ public class MessageService implements Handler {
     private void handleIncoming(PeerInfo remote, MessageEnvelope env) throws Exception {
         if (env == null || env.type == null) return;
         long now = System.currentTimeMillis();
-        clock.observe(env.clock);
 
         if (MessageType.CHAT.equals(env.type)) {
             handleChat(remote, env, now);
@@ -155,19 +156,22 @@ public class MessageService implements Handler {
 
         String content = payload.has("content") ? payload.get("content").getAsString() : "";
         String fromNodeId = env.from != null ? env.from.nodeId : remote.nodeId;
-        String toNodeId = payload.has("toNodeId") ? payload.get("toNodeId").getAsString() : localNodeId;
+        String toNodeId = payload.has("toNodeId") ? payload.get("toNodeId").getAsString() : identity.nodeId;
 
         Conversation conv = conversationService.getOrCreatePrivateConv(fromNodeId, remote.name, now);
 
         Message in = new Message();
         in.msgId = env.msgId;
         in.convId = conv.convId;
+        in.chatType = "PRIVATE";
+        in.roomId = null;
         in.direction = "IN";
         in.fromNodeId = fromNodeId;
         in.toNodeId = toNodeId;
         in.content = content;
         in.contentType = "text/plain";
         in.ts = env.ts > 0 ? env.ts : now;
+        in.updatedAt = in.ts;
         in.clockValue = String.valueOf(env.clock);
         in.status = "DELIVERED";
 
@@ -182,7 +186,7 @@ public class MessageService implements Handler {
         ack.protocolVersion = 1;
         ack.type = MessageType.ACK;
         ack.msgId = UUID.randomUUID().toString();
-        ack.from = new MessageEnvelope.NodeInfo(localNodeId, localName);
+        ack.from = new MessageEnvelope.NodeInfo(identity.nodeId, identity.displayName);
         ack.ts = System.currentTimeMillis();
         ack.clock = clock.tick();
 

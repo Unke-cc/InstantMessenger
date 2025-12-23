@@ -14,6 +14,7 @@ public class ConversationDao {
         public String convId;
         public String convType;
         public String peerNodeId;
+        public String roomId;
         public String title;
         public long createdAt;
         public long lastMsgTs;
@@ -25,6 +26,21 @@ public class ConversationDao {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, convType);
             ps.setString(2, peerNodeId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return mapRow(rs);
+                }
+            }
+        }
+        return null;
+    }
+
+    public Conversation getByRoom(String roomId) throws SQLException {
+        Connection conn = Db.getConnection();
+        String sql = "SELECT * FROM conversations WHERE conv_type = ? AND room_id = ? LIMIT 1";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, "ROOM");
+            ps.setString(2, roomId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return mapRow(rs);
@@ -51,6 +67,26 @@ public class ConversationDao {
             ps.executeUpdate();
         }
         return getByPeer("PRIVATE", peerNodeId);
+    }
+
+    public Conversation getOrCreateRoom(String roomId, String title, long now) throws SQLException {
+        Conversation existing = getByRoom(roomId);
+        if (existing != null) return existing;
+
+        Connection conn = Db.getConnection();
+        String convId = UUID.randomUUID().toString();
+        String sql = "INSERT OR IGNORE INTO conversations (conv_id, conv_type, peer_node_id, room_id, title, created_at, last_msg_ts) VALUES (?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, convId);
+            ps.setString(2, "ROOM");
+            ps.setString(3, null);
+            ps.setString(4, roomId);
+            ps.setString(5, title);
+            ps.setLong(6, now);
+            ps.setLong(7, now);
+            ps.executeUpdate();
+        }
+        return getByRoom(roomId);
     }
 
     public void updateLastMsgTs(String convId, long lastMsgTs) throws SQLException {
@@ -81,10 +117,10 @@ public class ConversationDao {
         c.convId = rs.getString("conv_id");
         c.convType = rs.getString("conv_type");
         c.peerNodeId = rs.getString("peer_node_id");
+        c.roomId = rs.getString("room_id");
         c.title = rs.getString("title");
         c.createdAt = rs.getLong("created_at");
         c.lastMsgTs = rs.getLong("last_msg_ts");
         return c;
     }
 }
-

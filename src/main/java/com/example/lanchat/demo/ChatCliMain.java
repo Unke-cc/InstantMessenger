@@ -1,7 +1,11 @@
 package com.example.lanchat.demo;
 
 import com.example.lanchat.core.Settings;
+import com.example.lanchat.service.GroupMessageService;
+import com.example.lanchat.service.LamportClock;
 import com.example.lanchat.service.MessageService;
+import com.example.lanchat.service.RoomMembershipService;
+import com.example.lanchat.service.RoomService;
 import com.example.lanchat.service.TransportService;
 import com.example.lanchat.store.ConversationDao;
 import com.example.lanchat.store.ConversationDao.Conversation;
@@ -12,6 +16,10 @@ import com.example.lanchat.store.MessageDao;
 import com.example.lanchat.store.MessageDao.Message;
 import com.example.lanchat.store.PeerDao;
 import com.example.lanchat.store.PeerDao.Peer;
+import com.example.lanchat.store.RoomDao;
+import com.example.lanchat.store.RoomDao.Room;
+import com.example.lanchat.store.RoomMemberDao;
+import com.example.lanchat.store.RoomMemberDao.RoomMember;
 import com.google.gson.JsonObject;
 import java.util.Collections;
 import java.util.List;
@@ -36,9 +44,18 @@ public class ChatCliMain {
         Identity identity = identityDao.loadOrCreateIdentity(name, p2pPort, Settings.DEFAULT_WEB_PORT);
 
         TransportService transport = new TransportService(identity);
-        MessageService messageService = new MessageService(identity.nodeId, identity.displayName, transport);
+        LamportClock clock = new LamportClock();
+        MessageService messageService = new MessageService(identity, clock, transport);
+        RoomService roomService = new RoomService(identity);
+        RoomMembershipService roomMembershipService = new RoomMembershipService(identity, clock, transport);
+        GroupMessageService groupMessageService = new GroupMessageService(identity, clock, transport);
         transport.onMessage((remote, env) -> {
+            if (env != null) {
+                clock.observe(env.clock);
+            }
             messageService.onMessage(remote, env);
+            roomMembershipService.onMessage(remote, env);
+            groupMessageService.onMessage(remote, env);
             if (env == null || env.type == null) return;
             if ("CHAT".equals(env.type) && env.payload != null && env.payload.isJsonObject()) {
                 JsonObject payload = env.payload.getAsJsonObject();
@@ -60,6 +77,8 @@ public class ChatCliMain {
         PeerDao peerDao = new PeerDao();
         ConversationDao conversationDao = new ConversationDao();
         MessageDao messageDao = new MessageDao();
+        RoomDao roomDao = new RoomDao();
+        RoomMemberDao roomMemberDao = new RoomMemberDao();
 
         System.out.println("Commands:");
         System.out.println("/me");
@@ -67,6 +86,12 @@ public class ChatCliMain {
         System.out.println("/addpeer <ip> <port> <name?>");
         System.out.println("/send <peerNodeId|ip:port> <text>");
         System.out.println("/senddup <peerNodeId|ip:port> <text>");
+        System.out.println("/mkroom <roomName>");
+        System.out.println("/rooms");
+        System.out.println("/join <roomId> <inviterIp:port> <token?>");
+        System.out.println("/members <roomId>");
+        System.out.println("/rsend <roomId> <text>");
+        System.out.println("/rhistory <roomId> <n>");
         System.out.println("/convs");
         System.out.println("/history <convId> <n>");
         System.out.println("/quit");
@@ -128,10 +153,94 @@ public class ChatCliMain {
                 }
                 continue;
             }
+            if (line.startsWith("/mkroom ")) {
+                String[] parts = line.split(" ", 2);
+                if (parts.length < 2) continue;
+                String roomName = parts[1].trim();
+                if (roomName.isEmpty()) continue;
+                try {
+                    String roomId = roomService.createRoom(roomName, "open", null);
+                    System.out.println("Created room: " + roomId + " (" + roomName + ")");
+                } catch (Exception e) {
+                    System.err.println("Create room failed: " + e.getMessage());
+                }
+                continue;
+            }
+            if ("/rooms".equalsIgnoreCase(line)) {
+                try {
+                    List<Room> rooms = roomDao.listRooms();
+                    for (Room r : rooms) {
+                        System.out.println(r.roomId + " / " + r.roomName + " / " + r.policy + " / " + r.createdAt);
+                    }
+                } catch (Exception e) {
+                    System.err.println("List rooms failed: " + e.getMessage());
+                }
+                continue;
+            }
+            if (line.startsWith("/join ")) {
+                String[] parts = line.split(" ", 4);
+                if (parts.length < 3) continue;
+                String roomId = parts[1];
+                String inviter = parts[2];
+                String token = parts.length >= 4 ? parts[3] : null;
+                if (!inviter.contains(":")) continue;
+                String[] ap = inviter.split(":", 2);
+                String ip = ap[0];
+                int port = Integer.parseInt(ap[1]);
+                try {
+                    roomMembershipService.joinRoom(roomId, ip, port, token);
+                    System.out.println("Joined room: " + roomId);
+                } catch (Exception e) {
+                    System.err.println("Join failed: " + e.getMessage());
+                }
+                continue;
+            }
+            if (line.startsWith("/members ")) {
+                String[] parts = line.split(" ", 2);
+                if (parts.length < 2) continue;
+                String roomId = parts[1];
+                try {
+                    List<RoomMember> members = roomMemberDao.listMembers(roomId);
+                    for (RoomMember m : members) {
+                        System.out.println(m.memberNodeId + " / " + m.memberName + " / " + m.lastKnownIp + ":" + m.lastKnownP2pPort + " / " + m.lastSeen);
+                    }
+                } catch (Exception e) {
+                    System.err.println("List members failed: " + e.getMessage());
+                }
+                continue;
+            }
+            if (line.startsWith("/rsend ")) {
+                String[] parts = line.split(" ", 3);
+                if (parts.length < 3) continue;
+                String roomId = parts[1];
+                String text = parts[2];
+                try {
+                    groupMessageService.sendRoomMessage(roomId, text);
+                } catch (Exception e) {
+                    System.err.println("Room send failed: " + e.getMessage());
+                }
+                continue;
+            }
+            if (line.startsWith("/rhistory ")) {
+                String[] parts = line.split(" ", 3);
+                if (parts.length < 3) continue;
+                String roomId = parts[1];
+                int n = Integer.parseInt(parts[2]);
+                try {
+                    List<Message> msgs = messageDao.listLatestRoomMessages(roomId, n);
+                    Collections.reverse(msgs);
+                    for (Message m : msgs) {
+                        System.out.println(m.ts + " " + m.direction + " " + m.status + " " + m.fromNodeId + " : " + m.content);
+                    }
+                } catch (Exception e) {
+                    System.err.println("Room history failed: " + e.getMessage());
+                }
+                continue;
+            }
             if ("/convs".equalsIgnoreCase(line)) {
                 List<Conversation> convs = conversationDao.listConversations();
                 for (Conversation c : convs) {
-                    System.out.println(c.convId + " / " + c.title + " / " + c.lastMsgTs + " / " + c.peerNodeId);
+                    System.out.println(c.convId + " / " + c.convType + " / " + c.title + " / " + c.lastMsgTs + " / " + c.peerNodeId + " / " + c.roomId);
                 }
                 continue;
             }

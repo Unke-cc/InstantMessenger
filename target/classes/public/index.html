@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LAN Chat</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="topbar">
+    <div id="meLine">
+      <span id="meId"></span>
+      <input id="meNameInput" placeholder="昵称" />
+      <button id="meSaveBtn">保存昵称</button>
+      <span id="statusLine"></span>
+    </div>
+  </div>
+
+  <div id="layout">
+    <div id="leftPane">
+      <div class="section">
+        <div class="sectionTitle">Peers</div>
+        <div id="peersList" class="list"></div>
+      </div>
+
+      <div class="section">
+        <div class="sectionTitle">Rooms</div>
+        <div class="row">
+          <input id="createRoomName" placeholder="roomName" />
+          <button id="createRoomBtn">创建</button>
+        </div>
+        <div class="row">
+          <input id="joinRoomId" placeholder="roomId" />
+        </div>
+        <div class="row">
+          <input id="joinInviter" placeholder="inviterIp:port" />
+          <button id="joinRoomBtn">加入</button>
+        </div>
+        <div id="roomsList" class="list"></div>
+      </div>
+    </div>
+
+    <div id="midPane">
+      <div class="section">
+        <div class="sectionTitle">Conversations</div>
+        <div id="convsList" class="list"></div>
+      </div>
+    </div>
+
+    <div id="rightPane">
+      <div id="chatHeader">
+        <div id="chatTitle">未选择会话</div>
+        <button id="membersBtn" class="hidden">成员</button>
+      </div>
+
+      <div id="messagesPane">
+        <button id="loadMoreBtn" class="hidden">加载更多</button>
+        <div id="messagesList"></div>
+      </div>
+
+      <div id="composer">
+        <input id="composerInput" placeholder="输入消息..." />
+        <button id="sendBtn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal" class="hidden">
+    <div id="modalBox">
+      <div id="modalTitle"></div>
+      <div id="modalBody"></div>
+      <div id="modalActions">
+        <button id="modalCloseBtn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
+

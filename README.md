@@ -127,3 +127,73 @@ This demo implements:
    /senddup 127.0.0.1:19002 dup_test
    ```
    Terminal B should print `Alice: dup_test` only once.
+
+## Group Chat Demo (Step 4)
+
+This demo implements:
+- Room creation + dynamic join (`JOIN_REQUEST` / `JOIN_ACCEPT` / `MEMBER_EVENT`)
+- Room message fan-out + SQLite persistence
+
+1. **Build:**
+   ```bash
+   mvn package
+   ```
+
+2. **Run two nodes:**
+   **Terminal A:**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.demo.ChatCliMain 19101 Alice dataA.db
+   ```
+
+   **Terminal B:**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.demo.ChatCliMain 19102 Bob dataB.db
+   ```
+
+3. **Create + join + send:**
+   In Terminal A:
+   ```text
+   /mkroom Room1
+   ```
+   Copy the `roomId`, then in Terminal B:
+   ```text
+   /join <roomId> 127.0.0.1:19101
+   /rsend <roomId> hello-group
+   ```
+
+4. **View room history:**
+   ```text
+   /rhistory <roomId> 50
+   ```
+
+## Local Web UI Demo (Step 5)
+
+This demo starts a local-only Web UI (serves `localhost` only):
+- Static UI: `http://localhost:<webPort>/`
+- REST API: `http://localhost:<webPort>/api/*`
+
+1. **Build:**
+   ```bash
+   mvn package
+   ```
+
+2. **Run two nodes (different P2P/Web ports + different DB files):**
+   **Terminal A (Alice):**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.Launcher 19201 Alice 18201 /tmp/webA.db
+   ```
+
+   **Terminal B (Bob):**
+   ```bash
+   java -cp target/lanchat-core-1.0-SNAPSHOT.jar com.example.lanchat.Launcher 19202 Bob 18202 /tmp/webB.db
+   ```
+
+3. **Open browsers:**
+   - Alice: `http://localhost:18201/`
+   - Bob: `http://localhost:18202/`
+
+4. **Verify features:**
+   - Peers list shows online/offline
+   - Private chat shows `SENT -> DELIVERED` after ACK
+   - Alice creates a room, Bob joins with `roomId + inviterIp:port`, then room chat works
+   - Restart processes and messages/history remain in SQLite

@@ -2,28 +2,37 @@ package com.example.lanchat;
 
 import com.example.lanchat.core.Settings;
 import com.example.lanchat.discovery.DiscoveryService;
+import com.example.lanchat.service.GroupMessageService;
+import com.example.lanchat.service.LamportClock;
+import com.example.lanchat.service.MessageService;
 import com.example.lanchat.service.PeerDirectory;
+import com.example.lanchat.service.RoomMembershipService;
+import com.example.lanchat.service.RoomService;
+import com.example.lanchat.service.TransportService;
 import com.example.lanchat.store.Db;
 import com.example.lanchat.store.IdentityDao;
 import com.example.lanchat.store.IdentityDao.Identity;
-import com.example.lanchat.store.PeerDao.Peer;
-
-import java.io.IOException;
-import java.net.ServerSocket;
-import java.net.Socket;
+import com.example.lanchat.web.ApiRoutes;
+import com.example.lanchat.web.WebServer;
+import com.example.lanchat.store.ConversationDao;
+import com.example.lanchat.store.MessageDao;
+import com.example.lanchat.store.PeerDao;
+import com.example.lanchat.store.RoomDao;
+import com.example.lanchat.store.RoomMemberDao;
+import com.google.gson.JsonObject;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.Scanner;
 import java.util.UUID;
-import java.util.concurrent.Executors;
 
 public class Launcher {
 
     public static void main(String[] args) {
-        System.out.println("Starting LAN Chat Node...");
+        System.out.println("Starting LAN Chat Node (Web UI)...");
 
         int p2pPort = Settings.DEFAULT_P2P_PORT;
         String name = "User-" + (System.currentTimeMillis() % 1000);
+        int webPort = Settings.DEFAULT_WEB_PORT;
+        String dbName = null;
 
         if (args.length > 0) {
             p2pPort = Integer.parseInt(args[0]);
@@ -31,11 +40,17 @@ public class Launcher {
         if (args.length > 1) {
             name = args[1];
         }
+        if (args.length > 2) {
+            webPort = Integer.parseInt(args[2]);
+        }
+        if (args.length > 3) {
+            dbName = args[3];
+        }
         
-        // Use unique DB per port for local testing
-        String dbName = "lanchat_" + p2pPort + ".db";
+        if (dbName == null || dbName.isBlank()) {
+            dbName = "lanchat_" + p2pPort + ".db";
+        }
 
-        // 1. Initialize DB
         try {
             Db.init(dbName);
         } catch (SQLException e) {
@@ -43,57 +58,91 @@ public class Launcher {
             return;
         }
 
-        // 2. Load Identity
-        Identity identity = null;
+        Identity identity;
         try {
             IdentityDao identityDao = new IdentityDao();
-            int webPort = Settings.DEFAULT_WEB_PORT; // simplified for now
-
             identity = identityDao.loadOrCreateIdentity(name, p2pPort, webPort);
             
             System.out.println("Node ID: " + identity.nodeId);
             System.out.println("Name:    " + identity.displayName);
             System.out.println("P2P Port:" + identity.p2pPort);
+            System.out.println("Web Port:" + identity.webPort);
             
         } catch (SQLException e) {
             e.printStackTrace();
             return;
         }
 
-        // 3. Start P2P Stub (to accept probes)
-        startP2PStub(identity.p2pPort);
+        TransportService transport = new TransportService(identity);
+        LamportClock clock = new LamportClock();
+        MessageService messageService = new MessageService(identity, clock, transport);
+        RoomService roomService = new RoomService(identity);
+        RoomMembershipService roomMembershipService = new RoomMembershipService(identity, clock, transport);
+        GroupMessageService groupMessageService = new GroupMessageService(identity, clock, transport);
 
-        // 4. Start Peer Directory
+        transport.onMessage((remote, env) -> {
+            if (env != null) clock.observe(env.clock);
+            messageService.onMessage(remote, env);
+            roomMembershipService.onMessage(remote, env);
+            groupMessageService.onMessage(remote, env);
+
+            if (env == null || env.type == null) return;
+            if ("CHAT".equals(env.type) && env.payload != null && env.payload.isJsonObject()) {
+                JsonObject payload = env.payload.getAsJsonObject();
+                String chatType = payload.has("chatType") ? payload.get("chatType").getAsString() : "";
+                if ("PRIVATE".equals(chatType)) {
+                    String content = payload.has("content") ? payload.get("content").getAsString() : "";
+                    String fromName = env.from != null && env.from.name != null ? env.from.name : remote.name;
+                    System.out.println(fromName + ": " + content);
+                }
+            }
+        });
+
+        try {
+            transport.start();
+        } catch (Exception e) {
+            System.err.println("Failed to start transport: " + e.getMessage());
+            return;
+        }
+
         PeerDirectory peerDirectory = new PeerDirectory();
         
-        // 5. Start Discovery
         DiscoveryService discoveryService = new DiscoveryService(identity, peerDirectory);
         discoveryService.start();
-        
-        // 6. Bootstrap Probe
-        peerDirectory.bootstrapProbe();
 
-        // 7. Loop print
-        Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
-            List<Peer> peers = peerDirectory.getOnlinePeers();
-            System.out.println("\n--- Online Peers (" + peers.size() + ") ---");
-            for (Peer p : peers) {
-                System.out.println(p);
-            }
-        }, 2, 5, java.util.concurrent.TimeUnit.SECONDS);
-        
-        // 8. Wait for exit
+        ApiRoutes apiRoutes = new ApiRoutes(
+                identity,
+                new IdentityDao(),
+                new PeerDao(),
+                new ConversationDao(),
+                new MessageDao(),
+                new RoomDao(),
+                new RoomMemberDao(),
+                messageService,
+                roomService,
+                roomMembershipService,
+                groupMessageService
+        );
+        WebServer webServer = new WebServer(identity.webPort, apiRoutes);
+        webServer.start();
+        System.out.println("Web UI: http://localhost:" + identity.webPort + "/");
+
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("Shutting down...");
+            try {
+                webServer.close();
+            } catch (Exception ignored) {
+            }
+            try {
+                transport.stop();
+            } catch (Exception ignored) {
+            }
             discoveryService.stop();
             peerDirectory.shutdown();
             Db.close();
         }));
-        
-        // Keep main thread alive
-        try {
-            // Support manual add peer via stdin for "Manual Peer Add" requirement
-            Scanner scanner = new Scanner(System.in);
+
+        try (Scanner scanner = new Scanner(System.in)) {
             System.out.println("Enter command (add <ip> <port> <name> or quit):");
             while (scanner.hasNextLine()) {
                 String line = scanner.nextLine();
@@ -112,22 +161,5 @@ public class Launcher {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    private static void startP2PStub(int port) {
-        new Thread(() -> {
-            try (ServerSocket ss = new ServerSocket(port)) {
-                while (!ss.isClosed()) {
-                    try (Socket s = ss.accept()) {
-                        // Just accept and close to prove we are alive
-                        s.close();
-                    } catch (Exception e) {
-                        // ignore
-                    }
-                }
-            } catch (IOException e) {
-                System.err.println("Failed to bind P2P port " + port);
-            }
-        }).start();
     }
 }

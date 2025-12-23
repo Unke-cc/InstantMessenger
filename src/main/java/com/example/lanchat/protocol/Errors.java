@@ -8,6 +8,7 @@ public final class Errors {
     public static final String UNSUPPORTED_VERSION = "UNSUPPORTED_VERSION";
     public static final String BAD_MESSAGE = "BAD_MESSAGE";
     public static final String TOO_LARGE = "TOO_LARGE";
+    public static final String NOT_MEMBER = "NOT_MEMBER";
 
     private Errors() {
     }
@@ -27,4 +28,3 @@ public final class Errors {
         return env;
     }
 }
-

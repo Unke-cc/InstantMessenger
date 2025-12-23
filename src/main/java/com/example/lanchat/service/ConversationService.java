@@ -16,8 +16,11 @@ public class ConversationService {
         return conversationDao.getOrCreatePrivate(peerNodeId, title, now);
     }
 
+    public Conversation getOrCreateRoomConv(String roomId, String title, long now) throws SQLException {
+        return conversationDao.getOrCreateRoom(roomId, title, now);
+    }
+
     public void touch(String convId, long lastMsgTs) throws SQLException {
         conversationDao.updateLastMsgTs(convId, lastMsgTs);
     }
 }
-

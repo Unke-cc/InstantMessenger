@@ -1,6 +1,5 @@
 package com.example.lanchat.store;
 
-import com.example.lanchat.core.Settings;
 import java.sql.*;
 import java.util.UUID;
 
@@ -26,9 +25,14 @@ public class IdentityDao {
                 id.displayName = rs.getString("display_name");
                 id.p2pPort = rs.getInt("p2p_port");
                 id.webPort = rs.getInt("web_port");
-                
+
                 // Update last_startup
                 updateLastStartup(conn, id.nodeId);
+                if (id.p2pPort != p2pPort || id.webPort != webPort) {
+                    updatePorts(conn, id.nodeId, p2pPort, webPort);
+                    id.p2pPort = p2pPort;
+                    id.webPort = webPort;
+                }
                 return id;
             }
         }
@@ -55,11 +59,30 @@ public class IdentityDao {
         id.webPort = webPort;
         return id;
     }
-    
+
+    public void updateDisplayName(String nodeId, String displayName) throws SQLException {
+        Connection conn = Db.getConnection();
+        String sql = "UPDATE identity SET display_name = ? WHERE node_id = ?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, displayName);
+            ps.setString(2, nodeId);
+            ps.executeUpdate();
+        }
+    }
+
     private void updateLastStartup(Connection conn, String nodeId) throws SQLException {
         try (PreparedStatement ps = conn.prepareStatement("UPDATE identity SET last_startup = ? WHERE node_id = ?")) {
             ps.setLong(1, System.currentTimeMillis());
             ps.setString(2, nodeId);
+            ps.executeUpdate();
+        }
+    }
+
+    private void updatePorts(Connection conn, String nodeId, int p2pPort, int webPort) throws SQLException {
+        try (PreparedStatement ps = conn.prepareStatement("UPDATE identity SET p2p_port = ?, web_port = ? WHERE node_id = ?")) {
+            ps.setInt(1, p2pPort);
+            ps.setInt(2, webPort);
+            ps.setString(3, nodeId);
             ps.executeUpdate();
         }
     }
