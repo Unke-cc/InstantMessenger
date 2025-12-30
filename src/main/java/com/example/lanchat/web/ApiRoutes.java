@@ -6,8 +6,11 @@ import com.example.lanchat.service.MessageService;
 import com.example.lanchat.service.RoomMembershipService;
 import com.example.lanchat.service.RoomService;
 import com.example.lanchat.service.SyncService;
+import com.example.lanchat.service.FileService;
 import com.example.lanchat.store.ConversationDao;
 import com.example.lanchat.store.ConversationDao.Conversation;
+import com.example.lanchat.store.FileDao;
+import com.example.lanchat.store.FileDao.FileMeta;
 import com.example.lanchat.store.IdentityDao;
 import com.example.lanchat.store.IdentityDao.Identity;
 import com.example.lanchat.store.MessageDao;
@@ -19,6 +22,9 @@ import com.example.lanchat.store.RoomDao.Room;
 import com.example.lanchat.store.RoomMemberDao;
 import com.example.lanchat.store.RoomMemberDao.RoomMember;
 import com.google.gson.Gson;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.OutputStream;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -31,7 +37,8 @@ import spark.Spark;
 public class ApiRoutes {
 
     private final Gson gson;
-    private final Identity identity;
+    private Identity identity;
+    private boolean loggedIn = false;
     private final IdentityDao identityDao;
     private final PeerDao peerDao;
     private final ConversationDao conversationDao;
@@ -43,6 +50,8 @@ public class ApiRoutes {
     private final RoomMembershipService roomMembershipService;
     private final GroupMessageService groupMessageService;
     private final SyncService syncService;
+    private final FileDao fileDao;
+    private final FileService fileService;
 
     public ApiRoutes(
             Identity identity,
@@ -56,7 +65,9 @@ public class ApiRoutes {
             RoomService roomService,
             RoomMembershipService roomMembershipService,
             GroupMessageService groupMessageService,
-            SyncService syncService
+            SyncService syncService,
+            FileDao fileDao,
+            FileService fileService
     ) {
         this.gson = new Gson();
         this.identity = identity;
@@ -71,9 +82,108 @@ public class ApiRoutes {
         this.roomMembershipService = roomMembershipService;
         this.groupMessageService = groupMessageService;
         this.syncService = syncService;
+        this.fileDao = fileDao;
+        this.fileService = fileService;
+        // Start as not logged in to force use of the login page
+        this.loggedIn = false;
+    }
+
+    private Object getAuthStatus(Request req, Response res) throws SQLException {
+        res.type("application/json");
+        Dto.AuthStatusDto status = new Dto.AuthStatusDto();
+        status.registered = identityDao.isRegistered();
+        status.loggedIn = this.loggedIn;
+        if (this.loggedIn && this.identity != null) {
+            Dto.MeDto me = new Dto.MeDto();
+            me.nodeId = identity.nodeId;
+            me.name = identity.displayName;
+            me.p2pPort = identity.p2pPort;
+            me.webPort = identity.webPort;
+            status.me = me;
+        }
+        return gson.toJson(Dto.ok(status));
+    }
+
+    private Object postLogin(Request req, Response res) throws SQLException {
+        res.type("application/json");
+        Dto.LoginRequest loginReq = gson.fromJson(req.body(), Dto.LoginRequest.class);
+        if (loginReq == null || loginReq.name == null || loginReq.password == null) {
+            return gson.toJson(Dto.fail("Missing credentials"));
+        }
+
+        Identity id = identityDao.login(loginReq.name, loginReq.password);
+        if (id != null) {
+            // Update the existing identity object so other services see the change
+            this.identity.nodeId = id.nodeId;
+            this.identity.displayName = id.displayName;
+            this.identity.passwordHash = id.passwordHash;
+            this.identity.p2pPort = id.p2pPort;
+            this.identity.webPort = id.webPort;
+            
+            this.loggedIn = true;
+            return gson.toJson(Dto.ok("Login success"));
+        } else {
+            return gson.toJson(Dto.fail("Invalid nickname or password"));
+        }
+    }
+
+    private Object postRegister(Request req, Response res) throws SQLException {
+        res.type("application/json");
+        Dto.RegisterRequest regReq = gson.fromJson(req.body(), Dto.RegisterRequest.class);
+        if (regReq == null || regReq.name == null || regReq.password == null) {
+            return gson.toJson(Dto.fail("Missing information"));
+        }
+
+        // Validate nickname
+        String name = regReq.name.trim();
+        if (name.length() < 2 || name.length() > 20) {
+            return gson.toJson(Dto.fail("Nickname length must be between 2 and 20 characters"));
+        }
+        if (!name.matches("^[\\u4e00-\\u9fa5a-zA-Z0-9_]+$")) {
+            return gson.toJson(Dto.fail("Nickname contains invalid characters (allowed: Chinese, English, Numbers, Underscore)"));
+        }
+
+        if (identityDao.isRegistered()) {
+            return gson.toJson(Dto.fail("Already registered on this node"));
+        }
+
+        // We use current ports from the placeholder identity
+        int p2pPort = this.identity.p2pPort;
+        int webPort = this.identity.webPort;
+        
+        Identity id = identityDao.register(name, regReq.password, p2pPort, webPort);
+        
+        // Update the existing identity object
+        this.identity.nodeId = id.nodeId;
+        this.identity.displayName = id.displayName;
+        this.identity.passwordHash = id.passwordHash;
+        this.identity.p2pPort = id.p2pPort;
+        this.identity.webPort = id.webPort;
+        
+        this.loggedIn = true;
+        return gson.toJson(Dto.ok("Registration success"));
+    }
+
+    private Object postLogout(Request req, Response res) {
+        res.type("application/json");
+        this.loggedIn = false;
+        return gson.toJson(Dto.ok("Logged out"));
     }
 
     public void register() {
+        Spark.before("/api/*", (req, res) -> {
+            String path = req.pathInfo();
+            if (path.startsWith("/api/auth/")) return;
+            if (!loggedIn) {
+                Spark.halt(401, gson.toJson(Dto.fail("Unauthorized. Please login.")));
+            }
+        });
+
+        Spark.get("/api/auth/status", this::getAuthStatus);
+        Spark.post("/api/auth/login", this::postLogin);
+        Spark.post("/api/auth/register", this::postRegister);
+        Spark.post("/api/auth/logout", this::postLogout);
+
         Spark.get("/api/me", this::getMe);
         Spark.post("/api/me", this::postMe);
 
@@ -93,7 +203,110 @@ public class ApiRoutes {
         Spark.get("/api/rooms/members", this::getRoomMembers);
         Spark.post("/api/rooms/sync", this::postSyncRoom);
 
+        Spark.get("/api/files", this::getFiles);
+        Spark.post("/api/files/upload/init", this::postFileUploadInit);
+        Spark.post("/api/files/upload/chunk", this::postFileUploadChunk);
+        Spark.post("/api/files/upload/complete", this::postFileUploadComplete);
+        Spark.get("/api/files/download/:fileId", this::getFileDownload);
+
         Spark.get("/api/poll", this::getPoll);
+    }
+
+    private Object getFiles(Request req, Response res) throws SQLException {
+        res.type("application/json");
+        List<FileMeta> metas = fileDao.listActiveFiles();
+        List<Dto.FileDto> out = new ArrayList<>();
+        for (FileMeta m : metas) {
+            Dto.FileDto dto = new Dto.FileDto();
+            dto.fileId = m.fileId;
+            dto.fileName = m.fileName;
+            dto.fileSize = m.fileSize;
+            dto.fileHash = m.fileHash;
+            dto.ownerNodeId = m.ownerNodeId;
+            dto.status = m.status;
+            dto.createdAt = m.createdAt;
+            dto.expiresAt = m.expiresAt;
+            dto.contentType = m.contentType;
+            dto.downloadUrl = "/api/files/download/" + m.fileId;
+            out.add(dto);
+        }
+        return gson.toJson(Dto.ok(out));
+    }
+
+    private Object postFileUploadInit(Request req, Response res) throws SQLException {
+        res.type("application/json");
+        Dto.FileUploadInitRequest body = gson.fromJson(req.body(), Dto.FileUploadInitRequest.class);
+        if (body == null || body.fileName == null) return gson.toJson(Dto.fail("Missing fileName"));
+
+        FileMeta meta = fileService.initUpload(body.fileName, body.fileSize, body.contentType, body.fileHash, identity.nodeId);
+        
+        Dto.FileUploadInitResponse resp = new Dto.FileUploadInitResponse();
+        resp.fileId = meta.fileId;
+        resp.chunkSize = fileService.getChunkSize();
+        resp.missingChunks = new ArrayList<>(); // For now, all chunks are missing
+        int numChunks = (int) Math.ceil((double) meta.fileSize / resp.chunkSize);
+        for (int i = 0; i < numChunks; i++) resp.missingChunks.add(i);
+
+        return gson.toJson(Dto.ok(resp));
+    }
+
+    private Object postFileUploadChunk(Request req, Response res) throws Exception {
+        res.type("application/json");
+        String fileId = req.queryParams("fileId");
+        String chunkIndexStr = req.queryParams("chunkIndex");
+        if (fileId == null || chunkIndexStr == null) return gson.toJson(Dto.fail("Missing params"));
+
+        int chunkIndex = Integer.parseInt(chunkIndexStr);
+        byte[] data = req.bodyAsBytes();
+        fileService.saveChunk(fileId, chunkIndex, data);
+
+        Dto.FileUploadChunkResponse resp = new Dto.FileUploadChunkResponse();
+        resp.success = true;
+        resp.chunkIndex = chunkIndex;
+        return gson.toJson(Dto.ok(resp));
+    }
+
+    private Object postFileUploadComplete(Request req, Response res) throws Exception {
+        res.type("application/json");
+        // Try both query param and body for flexibility
+        String fileId = req.queryParams("fileId");
+        if (fileId == null) {
+            java.util.Map<String, String> body = gson.fromJson(req.body(), java.util.Map.class);
+            if (body != null) fileId = body.get("fileId");
+        }
+        
+        if (fileId == null) return gson.toJson(Dto.fail("Missing fileId"));
+
+        boolean success = fileService.completeUpload(fileId);
+        if (success) {
+            return gson.toJson(Dto.ok(true));
+        } else {
+            return gson.toJson(Dto.fail("Upload completion failed (hash mismatch or missing chunks)"));
+        }
+    }
+
+    private Object getFileDownload(Request req, Response res) throws Exception {
+        String fileId = req.params(":fileId");
+        File file = fileService.getFile(fileId);
+        if (file == null || !file.exists()) {
+            res.status(404);
+            return "File not found";
+        }
+
+        FileMeta meta = fileDao.getById(fileId);
+        res.type(meta.contentType != null ? meta.contentType : "application/octet-stream");
+        res.header("Content-Disposition", "attachment; filename=\"" + meta.fileName + "\"");
+        res.header("Content-Length", String.valueOf(file.length()));
+
+        try (FileInputStream fis = new FileInputStream(file);
+             OutputStream os = res.raw().getOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = fis.read(buffer)) != -1) {
+                os.write(buffer, 0, read);
+            }
+        }
+        return res.raw();
     }
 
     private Object getMe(Request req, Response res) {

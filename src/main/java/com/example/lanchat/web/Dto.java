@@ -38,6 +38,23 @@ public final class Dto {
         public String name;
     }
 
+    public static final class LoginRequest {
+        public String name;
+        public String password;
+        public boolean rememberMe;
+    }
+
+    public static final class RegisterRequest {
+        public String name;
+        public String password;
+    }
+
+    public static final class AuthStatusDto {
+        public boolean loggedIn;
+        public boolean registered;
+        public MeDto me;
+    }
+
     public static final class PeerDto {
         public String nodeId;
         public String name;
@@ -137,5 +154,36 @@ public final class Dto {
     public static final class PollResponse {
         public long maxTs;
         public List<MessageDto> messages;
+    }
+
+    public static final class FileDto {
+        public String fileId;
+        public String fileName;
+        public long fileSize;
+        public String fileHash;
+        public String ownerNodeId;
+        public String status;
+        public long createdAt;
+        public long expiresAt;
+        public String contentType;
+        public String downloadUrl;
+    }
+
+    public static final class FileUploadInitRequest {
+        public String fileName;
+        public long fileSize;
+        public String contentType;
+        public String fileHash;
+    }
+
+    public static final class FileUploadInitResponse {
+        public String fileId;
+        public int chunkSize;
+        public List<Integer> missingChunks;
+    }
+
+    public static final class FileUploadChunkResponse {
+        public boolean success;
+        public int chunkIndex;
     }
 }

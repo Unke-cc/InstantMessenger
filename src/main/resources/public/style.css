@@ -591,3 +591,114 @@ button {
 .hidden {
   display: none !important;
 }
+
+/* File Transfer Styles */
+.file-drop-zone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--transition);
+  background: #f8fafc;
+  margin-bottom: 12px;
+}
+
+.file-drop-zone:hover, .file-drop-zone.dragover {
+  border-color: var(--primary);
+  background: #eff6ff;
+}
+
+.drop-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.upload-item {
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid var(--border-color);
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: default;
+}
+
+.progress-container {
+  height: 4px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.progress-bar {
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+
+.upload-success {
+  border-color: var(--accent-online);
+  background: #f0fdf4;
+}
+
+.upload-failed {
+  border-color: #ef4444;
+  background: #fef2f2;
+}
+
+.upload-failed .progress-bar {
+  background: #ef4444;
+}
+
+/* File Message Card in Chat */
+.file-msg-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.file-msg-icon {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 8px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.msgIn .file-msg-icon {
+  background: #f1f5f9;
+  color: var(--primary);
+}
+
+.file-msg-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-msg-name {
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.msgOut .file-msg-name {
+  color: white;
+}
+
+.msgOut .btn-text {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.msgOut .btn-text:hover {
+  background: rgba(255, 255, 255, 0.1);
+}

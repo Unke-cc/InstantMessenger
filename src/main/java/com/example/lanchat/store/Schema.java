@@ -12,11 +12,16 @@ public class Schema {
             stmt.execute("CREATE TABLE IF NOT EXISTS identity (" +
                     "node_id TEXT PRIMARY KEY, " +
                     "display_name TEXT, " +
+                    "password_hash TEXT, " +
                     "p2p_port INTEGER, " +
                     "web_port INTEGER, " +
                     "created_at INTEGER, " +
                     "last_startup INTEGER" +
                     ")");
+            try {
+                stmt.execute("ALTER TABLE identity ADD COLUMN password_hash TEXT");
+            } catch (SQLException ignored) {
+            }
             
             // Peers table
             stmt.execute("CREATE TABLE IF NOT EXISTS peers (" +
@@ -116,6 +121,18 @@ public class Schema {
                     "last_seen INTEGER, " +
                     "role TEXT, " +
                     "PRIMARY KEY(room_id, member_node_id)" +
+                    ")");
+
+            stmt.execute("CREATE TABLE IF NOT EXISTS files (" +
+                    "file_id TEXT PRIMARY KEY, " +
+                    "file_name TEXT, " +
+                    "file_size INTEGER, " +
+                    "file_hash TEXT, " +
+                    "owner_node_id TEXT, " +
+                    "status TEXT, " + // PENDING, UPLOADING, COMPLETED, EXPIRED
+                    "created_at INTEGER, " +
+                    "expires_at INTEGER, " +
+                    "content_type TEXT" +
                     ")");
             try {
                 stmt.execute("ALTER TABLE room_members ADD COLUMN role TEXT");

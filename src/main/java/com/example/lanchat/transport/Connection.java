@@ -131,8 +131,6 @@ public class Connection implements AutoCloseable {
             }
         } catch (Framing.FrameTooLargeException e) {
             sendErrorAndClose(Errors.TOO_LARGE, "Frame too large: " + e.sizeBytes);
-        } catch (IOException e) {
-            close();
         } catch (Exception e) {
             close();
         }

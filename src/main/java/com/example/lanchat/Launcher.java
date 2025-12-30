@@ -21,6 +21,8 @@ import com.example.lanchat.store.PeerDao;
 import com.example.lanchat.store.RoomDao;
 import com.example.lanchat.store.RoomMemberDao;
 import com.google.gson.JsonObject;
+import com.example.lanchat.store.FileDao;
+import com.example.lanchat.service.FileService;
 import java.sql.SQLException;
 import java.util.Scanner;
 import java.util.UUID;
@@ -128,6 +130,9 @@ public class Launcher {
         roomMembershipService.onJoinAccepted(syncService::syncRoomAsync);
         syncService.syncAllRoomsAsync();
 
+        FileDao fileDao = new FileDao();
+        FileService fileService = new FileService(fileDao);
+
         ApiRoutes apiRoutes = new ApiRoutes(
                 identity,
                 new IdentityDao(),
@@ -140,7 +145,9 @@ public class Launcher {
                 roomService,
                 roomMembershipService,
                 groupMessageService,
-                syncService
+                syncService,
+                fileDao,
+                fileService
         );
         WebServer webServer = new WebServer(identity.webPort, apiRoutes);
         webServer.start();

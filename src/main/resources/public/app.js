@@ -156,6 +156,10 @@ function showLoading(btn, loading = true) {
 
 async function apiGet(path) {
   const res = await fetch(path, { headers: { "Accept": "application/json" } });
+  if (res.status === 401) {
+    window.location.href = "/login.html";
+    return;
+  }
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || "API error");
   return json.data;
@@ -167,6 +171,10 @@ async function apiPost(path, body) {
     headers: { "Content-Type": "application/json", "Accept": "application/json" },
     body: JSON.stringify(body || {}),
   });
+  if (res.status === 401) {
+    window.location.href = "/login.html";
+    return;
+  }
   const json = await res.json();
   if (!json.ok) throw new Error(json.error || "API error");
   return json.data;
@@ -317,12 +325,31 @@ function renderMessages(scrollToBottom) {
     const displayStatus = status === "DELIVERED" ? "已送达" : (status === "SENT" ? "已发送" : status);
     const from = isOut ? "我" : (m.fromName || m.fromNodeId || "未知");
     
+    let contentHtml = escapeHtml(m.content || "");
+    // Check for file message pattern: [FILE:id]name (size)
+    const fileMatch = m.content && m.content.match(/^\[FILE:([^\]]+)\](.*)$/);
+    if (fileMatch) {
+      const fileId = fileMatch[1];
+      const fileNameAndSize = fileMatch[2];
+      contentHtml = `
+        <div class="file-msg-card">
+          <div class="file-msg-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+          </div>
+          <div class="file-msg-info">
+            <div class="file-msg-name">${escapeHtml(fileNameAndSize)}</div>
+            <button class="btn-text" style="padding: 0; margin-top: 4px;" onclick="downloadFile('${fileId}', '${escapeHtml(fileNameAndSize.split(' (')[0])}')">立即下载</button>
+          </div>
+        </div>
+      `;
+    }
+    
     div.innerHTML = `
       <div class="msg-header">
         <span class="msg-sender">${escapeHtml(from)}</span>
         <span class="msg-time">${fmtTime(m.ts)}</span>
       </div>
-      <div class="msg-bubble">${escapeHtml(m.content || "")}</div>
+      <div class="msg-bubble">${contentHtml}</div>
       ${isOut ? `<div class="msg-footer"><span class="msg-status">${displayStatus}</span></div>` : ""}
     `;
     fragment.appendChild(div);
@@ -599,8 +626,24 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#039;"}[m]));
 }
 
+async function logout() {
+  try {
+    await apiPost("/api/auth/logout");
+    window.location.href = "/login.html";
+  } catch (e) {
+    console.error(e);
+  }
+}
+
 async function init() {
   try {
+    // First check auth status
+    const authStatus = await apiGet("/api/auth/status");
+    if (!authStatus.loggedIn) {
+      window.location.href = "/login.html";
+      return;
+    }
+
     const me = await apiGet("/api/me");
     state.me = me;
     updateMeHeader(me);
@@ -643,9 +686,254 @@ async function init() {
     renderRooms();
   });
 
+  if ($("logoutBtn")) {
+    $("logoutBtn").addEventListener("click", logout);
+  }
+
+  initFileTransfer();
+
   await refreshAll();
   state.pollTimer = setInterval(pollOnce, 1000);
   setInterval(refreshAll, 5000);
+}
+
+// --- File Transfer Functions ---
+
+function initFileTransfer() {
+  const area = $("fileUploadArea");
+  const input = $("fileInput");
+  const showBtn = $("showFilesBtn");
+
+  if (area) {
+    area.addEventListener("click", () => input.click());
+    area.addEventListener("dragover", e => {
+      e.preventDefault();
+      area.classList.add("dragover");
+    });
+    area.addEventListener("dragleave", () => area.classList.remove("dragover"));
+    area.addEventListener("drop", e => {
+      e.preventDefault();
+      area.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) {
+        uploadFiles(e.dataTransfer.files);
+      }
+    });
+  }
+
+  if (input) {
+    input.addEventListener("change", () => {
+      if (input.files.length > 0) {
+        uploadFiles(input.files);
+        input.value = ""; // Clear for next selection
+      }
+    });
+  }
+
+  if (showBtn) {
+    showBtn.addEventListener("click", () => {
+      openModal("fileListModal");
+      loadFilesList();
+    });
+  }
+
+  $("closeFileModalBtn")?.addEventListener("click", () => closeModal("fileListModal"));
+  $("closeFilesBtn")?.addEventListener("click", () => closeModal("fileListModal"));
+  $("refreshFilesBtn")?.addEventListener("click", loadFilesList);
+}
+
+async function uploadFiles(files) {
+  for (const file of files) {
+    uploadFile(file).catch(e => {
+      console.error("Upload failed for", file.name, e);
+      setStatus(`文件 ${file.name} 上传失败: ${e.message}`, "error");
+    });
+  }
+}
+
+async function uploadFile(file) {
+  const fileId_temp = "up-" + Math.random().toString(36).substring(2, 9);
+  addActiveUploadUI(fileId_temp, file.name);
+
+  try {
+    // 1. Init upload
+    const initData = await apiPost("/api/files/upload/init", {
+      fileName: file.name,
+      fileSize: file.size,
+      contentType: file.type || "application/octet-stream",
+      fileHash: null // Skip hash for large files on frontend
+    });
+
+    const { fileId, chunkSize, missingChunks } = initData;
+    // Replace temp ID with real ID in UI
+    updateActiveUploadId(fileId_temp, fileId);
+
+    // 2. Upload chunks
+    let uploadedCount = 0;
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    // We can upload a few chunks in parallel for better performance
+    const concurrency = 3;
+    const chunksToUpload = [...missingChunks];
+    
+    const worker = async () => {
+      while (chunksToUpload.length > 0) {
+        const index = chunksToUpload.shift();
+        const start = index * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+        
+        await fetch(`/api/files/upload/chunk?fileId=${fileId}&chunkIndex=${index}`, {
+          method: "POST",
+          body: chunk,
+          headers: {
+            "Content-Type": "application/octet-stream"
+          }
+        }).then(res => {
+          if (res.status === 401) window.location.href = "/login.html";
+          return res.json();
+        }).then(json => {
+          if (!json.ok) throw new Error(json.error || "Chunk upload failed");
+        });
+
+        uploadedCount++;
+        const percent = Math.floor((uploadedCount / totalChunks) * 100);
+        updateUploadProgress(fileId, percent);
+      }
+    };
+
+    const workers = Array(Math.min(concurrency, chunksToUpload.length)).fill(0).map(() => worker());
+    await Promise.all(workers);
+
+    // 3. Complete upload
+    await apiPost("/api/files/upload/complete", { fileId });
+    
+    finishActiveUploadUI(fileId, true);
+    setStatus(`文件 ${file.name} 上传成功`);
+
+    // --- NEW: Auto-send message to current conversation ---
+    if (state.current) {
+      const downloadUrl = `/api/files/download/${fileId}`;
+      const fileMsg = `[FILE:${fileId}]${file.name} (${formatSize(file.size)})`;
+      
+      try {
+        if (state.current.type === "PRIVATE") {
+          await apiPost("/api/send/private", { peerNodeId: state.current.peerNodeId, content: fileMsg });
+        } else {
+          await apiPost("/api/send/room", { roomId: state.current.roomId, content: fileMsg });
+        }
+        pollOnce();
+      } catch (e) {
+        console.error("Failed to auto-send file message", e);
+      }
+    }
+  } catch (e) {
+    finishActiveUploadUI(fileId_temp, false, e.message);
+    throw e;
+  }
+}
+
+function addActiveUploadUI(tempId, fileName) {
+  const box = $("activeUploads");
+  if (!box) return;
+  const div = document.createElement("div");
+  div.id = `upload-${tempId}`;
+  div.className = "item upload-item";
+  div.innerHTML = `
+    <div class="item-content">
+      <div class="item-title" title="${escapeHtml(fileName)}">${escapeHtml(fileName)}</div>
+      <div class="progress-container">
+        <div class="progress-bar" style="width: 0%"></div>
+      </div>
+    </div>
+    <div class="item-meta">0%</div>
+  `;
+  box.prepend(div);
+}
+
+function updateActiveUploadId(oldId, newId) {
+  const el = $(`upload-${oldId}`);
+  if (el) el.id = `upload-${newId}`;
+}
+
+function updateUploadProgress(fileId, percent) {
+  const el = $(`upload-${fileId}`);
+  if (el) {
+    const bar = el.querySelector(".progress-bar");
+    const text = el.querySelector(".item-meta");
+    if (bar) bar.style.width = `${percent}%`;
+    if (text) text.textContent = `${percent}%`;
+  }
+}
+
+function finishActiveUploadUI(fileId, success, errorMsg) {
+  const el = $(`upload-${fileId}`);
+  if (el) {
+    if (success) {
+      el.classList.add("upload-success");
+      setTimeout(() => el.remove(), 3000);
+    } else {
+      el.classList.add("upload-failed");
+      el.querySelector(".item-meta").textContent = "失败";
+      el.title = errorMsg || "未知错误";
+    }
+  }
+}
+
+async function loadFilesList() {
+  const box = $("fileListContainer");
+  if (!box) return;
+  box.innerHTML = '<div class="item skeleton" style="height: 40px;"></div>';
+
+  try {
+    const files = await apiGet("/api/files");
+    renderFilesList(files);
+  } catch (e) {
+    box.innerHTML = `<div style="padding: 20px; color: #ef4444; text-align: center;">加载失败: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderFilesList(files) {
+  const box = $("fileListContainer");
+  if (!box) return;
+
+  if (files.length === 0) {
+    box.innerHTML = '<div style="padding: 40px; text-align: center; color: #94a3b8;">暂无文件</div>';
+    return;
+  }
+
+  box.innerHTML = files.map(f => {
+    const size = formatSize(f.fileSize);
+    const time = new Date(f.createdAt).toLocaleString();
+    return `
+      <div class="item">
+        <div class="item-content">
+          <div class="item-title">${escapeHtml(f.fileName)}</div>
+          <div class="item-meta">${size} · ${time}</div>
+        </div>
+        <button class="btn-icon" onclick="downloadFile('${f.fileId}', '${escapeHtml(f.fileName)}')" title="下载">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
+      </div>
+    `;
+  }).join("");
+}
+
+window.downloadFile = function(fileId, fileName) {
+  const url = `/api/files/download/${fileId}`;
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
+
+function formatSize(bytes) {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
 init();

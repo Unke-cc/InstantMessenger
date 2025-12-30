@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>登录 | LAN Chat</title>
+  <link rel="stylesheet" href="/style.css?v=1.2" />
+  <style>
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: var(--bg-main);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 400px;
+      padding: 2rem;
+      border-radius: 1rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      background: var(--bg-sidebar);
+      border: 1px solid var(--border-color);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .login-header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      color: var(--text-main);
+    }
+    .login-header p {
+      margin: 0.5rem 0 0;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: var(--text-main);
+      font-size: 0.875rem;
+    }
+    .form-group input {
+      width: 100%;
+      padding: 0.75rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--border-color);
+      background: var(--bg-main);
+      color: var(--text-main);
+      font-size: 1rem;
+      box-sizing: border-box;
+    }
+    .form-group input:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+    }
+    .login-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      font-size: 0.875rem;
+    }
+    .remember-me {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .remember-me input {
+      width: auto;
+    }
+    .forgot-password {
+      color: var(--accent-primary);
+      text-decoration: none;
+    }
+    .login-btn {
+      width: 100%;
+      padding: 0.875rem;
+      border-radius: 0.75rem;
+      border: none;
+      background: linear-gradient(135deg, var(--accent-primary), #4a90e2);
+      color: #000000;
+      font-size: 1.1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 122, 255, 0.4);
+      filter: brightness(1.1);
+    }
+    .login-btn:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
+    }
+    .login-btn:disabled {
+      background: var(--text-muted);
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+      filter: grayscale(1);
+    }
+    .register-link {
+      text-align: center;
+      margin-top: 1.5rem;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+    }
+    .register-link a {
+      color: var(--accent-primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    #error-msg {
+      margin-top: 1rem;
+      color: #ff4d4f;
+      font-size: 0.875rem;
+      text-align: center;
+      min-height: 1.25rem;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card" id="login-form">
+    <div class="login-header">
+      <h1>欢迎回来</h1>
+      <p>请登录您的 LAN Chat 账号</p>
+    </div>
+    <div class="form-group">
+      <label for="login-name">昵称</label>
+      <input type="text" id="login-name" placeholder="请输入您的昵称" required />
+    </div>
+    <div class="form-group">
+      <label for="login-password">密码</label>
+      <input type="password" id="login-password" placeholder="请输入密码" required />
+    </div>
+    <div class="form-group">
+      <label for="login-captcha">验证码: <span id="captcha-text"></span></label>
+      <input type="text" id="login-captcha" placeholder="请输入计算结果" required />
+    </div>
+    <div class="login-options">
+      <label class="remember-me">
+        <input type="checkbox" id="remember-me" />
+        记住我
+      </label>
+      <a href="#" class="forgot-password">忘记密码？</a>
+    </div>
+    <button id="login-submit" class="login-btn">登录</button>
+    <div id="error-msg"></div>
+    <div class="register-link">
+      还没有账号？ <a href="#" id="show-register">立即注册</a>
+    </div>
+  </div>
+
+  <div class="login-card hidden" id="register-form">
+    <div class="login-header">
+      <h1>加入 LAN Chat</h1>
+      <p>创建一个新的局域网身份</p>
+    </div>
+    <div class="form-group">
+      <label for="register-name">昵称</label>
+      <input type="text" id="register-name" placeholder="2-20位中文、英文、数字或下划线" required />
+    </div>
+    <div class="form-group">
+      <label for="register-password">密码</label>
+      <input type="password" id="register-password" placeholder="请输入密码" required />
+    </div>
+    <div class="form-group">
+      <label for="register-confirm-password">确认密码</label>
+      <input type="password" id="register-confirm-password" placeholder="请再次输入密码" required />
+    </div>
+    <button id="register-submit" class="login-btn">注册并登录</button>
+    <div id="register-error-msg" style="margin-top: 1rem; color: #ff4d4f; font-size: 0.875rem; text-align: center; min-height: 1.25rem;"></div>
+    <div class="register-link">
+      已有账号？ <a href="#" id="show-login">立即登录</a>
+    </div>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const errorMsg = document.getElementById('error-msg');
+    const regErrorMsg = document.getElementById('register-error-msg');
+    const captchaText = document.getElementById('captcha-text');
+    let currentCaptchaResult = 0;
+
+    function generateCaptcha() {
+      const a = Math.floor(Math.random() * 10);
+      const b = Math.floor(Math.random() * 10);
+      currentCaptchaResult = a + b;
+      captchaText.textContent = `${a} + ${b} = ?`;
+    }
+
+    generateCaptcha();
+
+    document.getElementById('show-register').onclick = (e) => {
+      e.preventDefault();
+      loginForm.classList.add('hidden');
+      registerForm.classList.remove('hidden');
+    };
+
+    document.getElementById('show-login').onclick = (e) => {
+      e.preventDefault();
+      registerForm.classList.add('hidden');
+      loginForm.classList.remove('hidden');
+      generateCaptcha();
+    };
+
+    async function handleLogin() {
+      const name = document.getElementById('login-name').value;
+      const password = document.getElementById('login-password').value;
+      const captchaInput = document.getElementById('login-captcha').value;
+      const rememberMe = document.getElementById('remember-me').checked;
+
+      if (!name || !password || !captchaInput) {
+        errorMsg.textContent = '请输入昵称、密码和验证码';
+        return;
+      }
+
+      if (parseInt(captchaInput) !== currentCaptchaResult) {
+        errorMsg.textContent = '验证码错误';
+        generateCaptcha();
+        return;
+      }
+
+      errorMsg.textContent = '';
+      const submitBtn = document.getElementById('login-submit');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>登录中...</span>';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, password, rememberMe })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = '/';
+        } else {
+          errorMsg.textContent = data.msg || '登录失败';
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '登录';
+        }
+      } catch (err) {
+        errorMsg.textContent = '网络错误，请稍后再试';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '登录';
+      }
+    }
+
+    async function handleRegister() {
+      const name = document.getElementById('register-name').value;
+      const password = document.getElementById('register-password').value;
+      const confirmPassword = document.getElementById('register-confirm-password').value;
+
+      if (!name || !password || !confirmPassword) {
+        regErrorMsg.textContent = '请填写所有信息';
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        regErrorMsg.textContent = '两次输入的密码不一致';
+        return;
+      }
+
+      regErrorMsg.textContent = '';
+      const submitBtn = document.getElementById('register-submit');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span>注册中...</span>';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, password })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = '/';
+        } else {
+          regErrorMsg.textContent = data.msg || '注册失败';
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '注册并登录';
+        }
+      } catch (err) {
+        regErrorMsg.textContent = '网络错误，请稍后再试';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '注册并登录';
+      }
+    }
+
+    document.getElementById('login-submit').onclick = handleLogin;
+    document.getElementById('register-submit').onclick = handleRegister;
+
+    // Enter key support
+    document.querySelectorAll('input').forEach(input => {
+      input.onkeypress = (e) => {
+        if (e.key === 'Enter') {
+          if (!loginForm.classList.contains('hidden')) handleLogin();
+          else handleRegister();
+        }
+      };
+    });
+
+    // Check if already logged in
+    fetch('/api/auth/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          if (data.data.loggedIn) {
+            window.location.href = '/';
+          } else if (!data.data.registered) {
+            // If not registered, show registration form by default
+            loginForm.classList.add('hidden');
+            registerForm.classList.remove('hidden');
+          }
+        }
+      });
+  </script>
+</body>
+</html>
